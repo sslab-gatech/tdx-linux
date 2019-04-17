@@ -1704,7 +1704,24 @@ static u64 kvm_get_arch_capabilities(void)
 
 static u64 kvm_get_core_capability(void)
 {
-        return 0;
+        u64 data = 0;
+
+        if (boot_cpu_has(X86_FEATURE_CORE_CAPABILITIES)) {
+                rdmsrl(MSR_IA32_CORE_CAPS, data);
+
+                /* mask non-virtualizable functions */
+                data &= MSR_IA32_CORE_CAPS_SPLIT_LOCK_DETECT;
+        } else if (boot_cpu_has(X86_FEATURE_SPLIT_LOCK_DETECT)) {
+                /*
+                 * There will be a list of FMS values that have split lock
+                 * detection but lack the CORE CAPABILITY MSR. In this case,
+                 * set CORE_CAP_SPLIT_LOCK_DETECT since we emulate
+                 * MSR CORE_CAPABILITY.
+                 */
+                data |= MSR_IA32_CORE_CAPS_SPLIT_LOCK_DETECT;
+        }
+
+        return data;
 }
 
 static int kvm_get_msr_feature(struct kvm_msr_entry *msr)
