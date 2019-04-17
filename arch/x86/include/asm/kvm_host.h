@@ -775,6 +775,7 @@ struct kvm_vcpu_arch {
 	u64 microcode_version;
 	u64 arch_capabilities;
 	u64 perf_capabilities;
+        u64 core_capability;
 
 	/*
 	 * Paging state of the vcpu

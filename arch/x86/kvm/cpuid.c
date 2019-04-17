@@ -687,9 +687,10 @@ void kvm_set_cpu_caps(void)
 		F(IBT)
 	);
 
-	/* TSC_ADJUST and ARCH_CAPABILITIES are emulated in software. */
+	/* TSC_ADJUST, ARCH_CAPABILITIES, and CORE_CAPABILITIES are emulated in software. */
 	kvm_cpu_cap_set(X86_FEATURE_TSC_ADJUST);
 	kvm_cpu_cap_set(X86_FEATURE_ARCH_CAPABILITIES);
+        kvm_cpu_cap_set(X86_FEATURE_CORE_CAPABILITIES);
 
 	if (boot_cpu_has(X86_FEATURE_IBPB) && boot_cpu_has(X86_FEATURE_IBRS))
 		kvm_cpu_cap_set(X86_FEATURE_SPEC_CTRL);
