@@ -231,7 +231,8 @@ static struct kvm_user_return_msrs __percpu *user_return_msrs;
 				| XFEATURE_MASK_BNDCSR | XFEATURE_MASK_AVX512 \
 				| XFEATURE_MASK_PKRU | XFEATURE_MASK_XTILE)
 
-#define KVM_SUPPORTED_XSS     0
+#define KVM_SUPPORTED_XSS	(XFEATURE_MASK_CET_USER | \
+				 XFEATURE_MASK_CET_KERNEL)
 
 u64 __read_mostly host_efer;
 EXPORT_SYMBOL_GPL(host_efer);
@@ -9933,6 +9934,20 @@ static int __kvm_x86_vendor_init(struct kvm_x86_init_ops *ops)
 	if (!kvm_cpu_cap_has(X86_FEATURE_XSAVES))
 		kvm_caps.supported_xss = 0;
 
+	if (!kvm_cpu_cap_has(X86_FEATURE_SHSTK) &&
+	    !kvm_cpu_cap_has(X86_FEATURE_IBT))
+		kvm_caps.supported_xss &= ~(XFEATURE_MASK_CET_USER |
+					    XFEATURE_MASK_CET_KERNEL);
+
+	if ((kvm_caps.supported_xss & (XFEATURE_MASK_CET_USER |
+	     XFEATURE_MASK_CET_KERNEL)) !=
+	    (XFEATURE_MASK_CET_USER | XFEATURE_MASK_CET_KERNEL)) {
+		kvm_cpu_cap_clear(X86_FEATURE_SHSTK);
+		kvm_cpu_cap_clear(X86_FEATURE_IBT);
+		kvm_caps.supported_xss &= ~(XFEATURE_MASK_CET_USER |
+					    XFEATURE_MASK_CET_KERNEL);
+	}
+
 #define __kvm_cpu_cap_has(UNUSED_, f) kvm_cpu_cap_has(f)
 	cr4_reserved_bits = __cr4_reserved_bits(__kvm_cpu_cap_has, UNUSED_);
 #undef __kvm_cpu_cap_has
@@ -12403,7 +12418,9 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 }
 
 #define XSTATE_NEED_RESET_MASK	(XFEATURE_MASK_BNDREGS | \
-				 XFEATURE_MASK_BNDCSR)
+				 XFEATURE_MASK_BNDCSR | \
+				 XFEATURE_MASK_CET_USER | \
+				 XFEATURE_MASK_CET_KERNEL)
 
 static bool kvm_vcpu_has_xstate(unsigned long xfeature)
 {
@@ -12411,6 +12428,11 @@ static bool kvm_vcpu_has_xstate(unsigned long xfeature)
 	case XFEATURE_MASK_BNDREGS:
 	case XFEATURE_MASK_BNDCSR:
 		return kvm_cpu_cap_has(X86_FEATURE_MPX);
+	case XFEATURE_CET_USER:
+		return kvm_cpu_cap_has(X86_FEATURE_SHSTK) ||
+		       kvm_cpu_cap_has(X86_FEATURE_IBT);
+	case XFEATURE_CET_KERNEL:
+		return kvm_cpu_cap_has(X86_FEATURE_SHSTK);
 	default:
 		return false;
 	}
