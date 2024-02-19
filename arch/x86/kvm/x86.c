@@ -12218,11 +12218,27 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 		static_branch_dec(&kvm_has_noapic_vcpu);
 }
 
+#define XSTATE_NEED_RESET_MASK	(XFEATURE_MASK_BNDREGS | \
+				 XFEATURE_MASK_BNDCSR)
+
+static bool kvm_vcpu_has_xstate(unsigned long xfeature)
+{
+	switch (xfeature) {
+	case XFEATURE_MASK_BNDREGS:
+	case XFEATURE_MASK_BNDCSR:
+		return kvm_cpu_cap_has(X86_FEATURE_MPX);
+	default:
+		return false;
+	}
+}
+
 void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 {
 	struct kvm_cpuid_entry2 *cpuid_0x1;
 	unsigned long old_cr0 = kvm_read_cr0(vcpu);
+	DECLARE_BITMAP(reset_mask, 64);
 	unsigned long new_cr0;
+	unsigned int i;
 
 	/*
 	 * Several of the "set" flows, e.g. ->set_cr0(), read other registers
@@ -12275,7 +12291,12 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	kvm_async_pf_hash_reset(vcpu);
 	vcpu->arch.apf.halted = false;
 
-	if (vcpu->arch.guest_fpu.fpstate && kvm_mpx_supported()) {
+	bitmap_from_u64(reset_mask, (kvm_caps.supported_xcr0 |
+				     kvm_caps.supported_xss) &
+				    XSTATE_NEED_RESET_MASK);
+
+	if (vcpu->arch.guest_fpu.fpstate &&
+	    !bitmap_empty(reset_mask, XFEATURE_MAX)) {
 		struct fpstate *fpstate = vcpu->arch.guest_fpu.fpstate;
 
 		/*
@@ -12285,8 +12306,11 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 		if (init_event)
 			kvm_put_guest_fpu(vcpu);
 
-		fpstate_clear_xstate_component(fpstate, XFEATURE_BNDREGS);
-		fpstate_clear_xstate_component(fpstate, XFEATURE_BNDCSR);
+		for_each_set_bit(i, reset_mask, XFEATURE_MAX) {
+			if (!kvm_vcpu_has_xstate(i))
+				continue;
+			fpstate_clear_xstate_component(fpstate, i);
+		}
 
 		if (init_event)
 			kvm_load_guest_fpu(vcpu);
