@@ -282,17 +282,18 @@ static inline void tdx_disassociate_vp(struct kvm_vcpu *vcpu)
 	vcpu->cpu = -1;
 }
 
-static void tdx_clear_page(struct page *page)
+static void tdx_clear_page(struct page *page, unsigned long size)
 {
 	const void *zero_page = (const void *) page_to_virt(ZERO_PAGE(0));
 	void *dest = page_to_virt(page);
 	unsigned long i;
 
+	WARN_ON_ONCE(size % PAGE_SIZE);
 	/*
 	 * The page could have been poisoned.  MOVDIR64B also clears
 	 * the poison bit so the kernel can safely use the page again.
 	 */
-	for (i = 0; i < PAGE_SIZE; i += 64)
+	for (i = 0; i < size; i += 64)
 		movdir64b(dest + i, zero_page);
 	/*
 	 * MOVDIR64B store uses WC buffer.  Prevent following memory reads
@@ -322,7 +323,7 @@ static void tdx_no_vcpus_enter_stop(struct kvm *kvm)
 }
 
 /* TDH.PHYMEM.PAGE.RECLAIM is allowed only when destroying the TD. */
-static int __tdx_reclaim_page(struct page *page)
+static int __tdx_reclaim_page(struct page *page, enum pg_level level)
 {
 	u64 err, rcx, rdx, r8;
 	int i;
@@ -351,16 +352,18 @@ out:
 		pr_tdx_error_3(TDH_PHYMEM_PAGE_RECLAIM, err, rcx, rdx, r8);
 		return -EIO;
 	}
+	/* out.r8 == tdx sept page level */
+	WARN_ON_ONCE(r8 != pg_level_to_tdx_sept_level(level));
 	return 0;
 }
 
-static int tdx_reclaim_page(struct page *page)
+static int tdx_reclaim_page(struct page *page, enum pg_level level)
 {
 	int r;
 
-	r = __tdx_reclaim_page(page);
+	r = __tdx_reclaim_page(page, level);
 	if (!r)
-		tdx_clear_page(page);
+		tdx_clear_page(page, KVM_HPAGE_SIZE(level));
 	return r;
 }
 
@@ -376,7 +379,7 @@ static void tdx_reclaim_control_page(struct page *ctrl_page)
 	 * Leak the page if the kernel failed to reclaim the page.
 	 * The kernel cannot use it safely anymore.
 	 */
-	if (tdx_reclaim_page(ctrl_page))
+	if (tdx_reclaim_page(ctrl_page, PG_LEVEL_4K))
 		return;
 
 	__free_page(ctrl_page);
@@ -593,7 +596,7 @@ static void tdx_reclaim_td_control_pages(struct kvm *kvm)
 	if (!kvm_tdx->td.tdr_page)
 		return;
 
-	if (__tdx_reclaim_page(kvm_tdx->td.tdr_page))
+	if (__tdx_reclaim_page(kvm_tdx->td.tdr_page, PG_LEVEL_4K))
 		return;
 
 	/*
@@ -606,7 +609,7 @@ static void tdx_reclaim_td_control_pages(struct kvm *kvm)
 		pr_tdx_error(TDH_PHYMEM_PAGE_WBINVD, err);
 		return;
 	}
-	tdx_clear_page(kvm_tdx->td.tdr_page);
+	tdx_clear_page(kvm_tdx->td.tdr_page, PAGE_SIZE);
 
 	__free_page(kvm_tdx->td.tdr_page);
 	kvm_tdx->td.tdr_page = NULL;
@@ -1717,7 +1720,7 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		pr_tdx_error(TDH_PHYMEM_PAGE_WBINVD, err);
 		return -EIO;
 	}
-	tdx_clear_page(page);
+	tdx_clear_page(page, PAGE_SIZE);
 	tdx_unpin(kvm, page);
 	return 0;
 }
@@ -1837,7 +1840,7 @@ int tdx_sept_free_private_spt(struct kvm *kvm, gfn_t gfn,
 	 * The HKID assigned to this TD was already freed and cache was
 	 * already flushed. We don't have to flush again.
 	 */
-	return tdx_reclaim_page(virt_to_page(private_spt));
+	return tdx_reclaim_page(virt_to_page(private_spt), PG_LEVEL_4K);
 }
 
 int tdx_sept_remove_private_spte(struct kvm *kvm, gfn_t gfn,
