@@ -1894,10 +1894,23 @@ static inline bool tdx_is_sept_violation_unexpected_pending(struct kvm_vcpu *vcp
 
 static int tdx_handle_ept_violation(struct kvm_vcpu *vcpu)
 {
+	union tdx_ext_exit_qualification ext_exit_qual;
 	gpa_t gpa = tdexit_gpa(vcpu);
 	unsigned long exit_qual;
+	int err_page_level = 0;
 	bool local_retry = false;
 	int ret;
+
+	ext_exit_qual.full = tdexit_ext_exit_qual(vcpu);
+
+	if (ext_exit_qual.type >= NUM_EXT_EXIT_QUAL) {
+		pr_err("EPT violation at gpa 0x%lx, with invalid ext exit qualification type 0x%x",
+			tdexit_gpa(vcpu), ext_exit_qual.type);
+		kvm_vm_bugged(vcpu->kvm);
+		return 0;
+	} else if (ext_exit_qual.type == EXT_EXIT_QUAL_ACCEPT) {
+		err_page_level = tdx_sept_level_to_pg_level(ext_exit_qual.req_sept_level);
+	}
 
 	if (vt_is_tdx_private_gpa(vcpu->kvm, gpa)) {
 		if (tdx_is_sept_violation_unexpected_pending(vcpu)) {
@@ -1948,7 +1961,7 @@ static int tdx_handle_ept_violation(struct kvm_vcpu *vcpu)
 	trace_kvm_page_fault(vcpu, tdexit_gpa(vcpu), exit_qual);
 
 	while (1) {
-		ret = __vmx_handle_ept_violation(vcpu, gpa, exit_qual);
+		ret = __vmx_handle_ept_violation(vcpu, gpa, exit_qual, err_page_level);
 
 		if (ret != RET_PF_RETRY || !local_retry)
 			break;
