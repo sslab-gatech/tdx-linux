@@ -264,6 +264,7 @@ enum x86_intercept_stage;
 #define PFERR_FETCH_MASK	BIT(4)
 #define PFERR_PK_MASK		BIT(5)
 #define PFERR_SGX_MASK		BIT(15)
+#define PFERR_LEVEL_MASK		GENMASK_ULL(31, 29)
 #define PFERR_GUEST_RMP_MASK	BIT_ULL(31)
 #define PFERR_GUEST_FINAL_MASK	BIT_ULL(32)
 #define PFERR_GUEST_PAGE_MASK	BIT_ULL(33)
@@ -282,6 +283,8 @@ enum x86_intercept_stage;
  */
 #define PFERR_PRIVATE_ACCESS   BIT_ULL(49)
 #define PFERR_SYNTHETIC_MASK   (PFERR_IMPLICIT_ACCESS | PFERR_PRIVATE_ACCESS)
+
+#define PFERR_LEVEL(err_code) (((err_code) & PFERR_LEVEL_MASK) >> 29)
 
 /* apic attention bits */
 #define KVM_APIC_CHECK_VAPIC	0
