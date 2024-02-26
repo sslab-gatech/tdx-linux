@@ -1577,9 +1577,12 @@ void tdx_load_mmu_pgd(struct kvm_vcpu *vcpu, hpa_t root_hpa, int pgd_level)
 	td_vmcs_write64(to_tdx(vcpu), SHARED_EPT_POINTER, root_hpa);
 }
 
-static void tdx_unpin(struct kvm *kvm, struct page *page)
+static void tdx_unpin(struct kvm *kvm, kvm_pfn_t pfn, enum pg_level level)
 {
-	put_page(page);
+	int i;
+
+	for (i = 0; i < KVM_PAGES_PER_HPAGE(level); i++)
+		put_page(pfn_to_page(pfn + i));
 }
 
 static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
@@ -1593,13 +1596,13 @@ static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
 
 	err = tdh_mem_page_aug(&kvm_tdx->td, gpa, tdx_level, page, &entry, &level_state);
 	if (unlikely(err & TDX_OPERAND_BUSY)) {
-		tdx_unpin(kvm, page);
+		tdx_unpin(kvm, page_to_pfn(page), level);
 		return -EBUSY;
 	}
 
 	if (KVM_BUG_ON(err, kvm)) {
 		pr_tdx_error_2(TDH_MEM_PAGE_AUG, err, entry, level_state);
-		tdx_unpin(kvm, page);
+		tdx_unpin(kvm, page_to_pfn(page), level);
 		return -EIO;
 	}
 
@@ -1635,11 +1638,7 @@ int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
 			      enum pg_level level, kvm_pfn_t pfn)
 {
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
-	struct page *page = pfn_to_page(pfn);
-
-	/* TODO: handle large pages. */
-	if (KVM_BUG_ON(level != PG_LEVEL_4K, kvm))
-		return -EINVAL;
+	int i;
 
 	/*
 	 * Because guest_memfd doesn't support page migration with
@@ -1649,7 +1648,8 @@ int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
 	 * TODO: Once guest_memfd introduces callback on page migration,
 	 * implement it and remove get_page/put_page().
 	 */
-	get_page(page);
+	for (i = 0; i < KVM_PAGES_PER_HPAGE(level); i++)
+		get_page(pfn_to_page(pfn + i));
 
 	/*
 	 * Read 'pre_fault_allowed' before 'kvm_tdx->state'; see matching
@@ -1657,7 +1657,7 @@ int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
 	 */
 	smp_rmb();
 	if (likely(kvm_tdx->state == TD_STATE_RUNNABLE))
-		return tdx_mem_page_aug(kvm, gfn, level, page);
+		return tdx_mem_page_aug(kvm, gfn, level, pfn_to_page(pfn));
 
 	return tdx_mem_page_record_premap_cnt(kvm, gfn, level, pfn);
 }
@@ -1668,11 +1668,9 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 	int tdx_level = pg_level_to_tdx_sept_level(level);
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
 	gpa_t gpa = gfn_to_gpa(gfn);
+	int r = 0;
 	u64 err, entry, level_state;
-
-	/* TODO: handle large pages. */
-	if (KVM_BUG_ON(level != PG_LEVEL_4K, kvm))
-		return -EINVAL;
+	int i;
 
 	if (KVM_BUG_ON(!is_hkid_assigned(kvm_tdx), kvm))
 		return -EINVAL;
@@ -1704,7 +1702,7 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		if (!is_last_spte(entry, level) || !(entry & VMX_EPT_RWX_MASK)) {
 			WARN_ON_ONCE(!atomic64_read(&kvm_tdx->nr_premapped));
 			atomic64_dec(&kvm_tdx->nr_premapped);
-			tdx_unpin(kvm, page);
+			tdx_unpin(kvm, page_to_pfn(page), level);
 			return 0;
 		}
 	}
@@ -1714,15 +1712,19 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		return -EIO;
 	}
 
-	err = tdh_phymem_page_wbinvd_hkid((u16)kvm_tdx->hkid, page);
+	for (i = 0; i < KVM_PAGES_PER_HPAGE(level); i++) {
+		err = tdh_phymem_page_wbinvd_hkid((u16)kvm_tdx->hkid, page);
+		if (KVM_BUG_ON(err, kvm)) {
+			pr_tdx_error(TDH_PHYMEM_PAGE_WBINVD, err);
+			r = -EIO;
+		} else {
+			tdx_clear_page(page, PAGE_SIZE);
+			tdx_unpin(kvm, page_to_pfn(page), PG_LEVEL_4K);
+		}
 
-	if (KVM_BUG_ON(err, kvm)) {
-		pr_tdx_error(TDH_PHYMEM_PAGE_WBINVD, err);
-		return -EIO;
+		page += 1;
 	}
-	tdx_clear_page(page, PAGE_SIZE);
-	tdx_unpin(kvm, page);
-	return 0;
+	return r;
 }
 
 int tdx_sept_link_private_spt(struct kvm *kvm, gfn_t gfn,
@@ -3119,7 +3121,7 @@ static int tdx_gmem_post_populate(struct kvm *kvm, gfn_t gfn, kvm_pfn_t pfn,
 	}
 
 out:
-	put_page(src_page);
+	tdx_unpin(kvm, page_to_pfn(src_page), PG_LEVEL_4K);
 	return ret;
 }
 
