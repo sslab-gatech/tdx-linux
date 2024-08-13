@@ -117,6 +117,12 @@ module_param(enable_ipiv, bool, 0444);
 static bool __read_mostly nested = 1;
 module_param(nested, bool, 0444);
 
+/*
+ * If open_tdx=1, tdx emulation is supported.
+ */
+static bool __read_mostly open_tdx = 0;
+module_param(open_tdx, bool, S_IRUGO);
+
 bool __read_mostly enable_pml = 1;
 module_param_named(pml, enable_pml, bool, 0444);
 
@@ -7968,6 +7974,8 @@ static __init void vmx_set_cpu_caps(void)
 	/* CPUID 0x1 */
 	if (nested)
 		kvm_cpu_cap_set(X86_FEATURE_VMX);
+	if (open_tdx)
+		kvm_cpu_cap_set(X86_FEATURE_SMX);
 
 	/* CPUID 0x7 */
 	if (kvm_mpx_supported())
