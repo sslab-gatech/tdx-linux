@@ -7606,6 +7606,8 @@ static int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 		WRITE_ONCE(to_kvm_vmx(vcpu->kvm)->pid_table[vcpu->vcpu_id],
 			   __pa(&vmx->pi_desc) | PID_TABLE_ENTRY_VALID);
 
+	vmx->authenticated_code_execution_mode = false;
+
 	return 0;
 
 free_vmcs:
