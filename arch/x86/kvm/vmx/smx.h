@@ -15,6 +15,16 @@ enum smx_getsec_function {
     WAKEUP       = 0x08,
 };
 
+#define CAPABILITIES_CHIPSET_PRESENT    BIT(0)
+#define CAPABILITIES_ENTERACCS          BIT(2)
+#define CAPABILITIES_EXITAC             BIT(3)
+#define CAPABILITIES_SENTER             BIT(4)
+#define CAPABILITIES_SEXIT              BIT(5)
+#define CAPABILITIES_PARAMETERS         BIT(6)
+#define CAPABILITIES_SMCTRL             BIT(7)
+#define CAPABILITIES_WAKEUP             BIT(8)
+#define CAPABILITIES_EXTENDED_LEAFS     BIT(31)
+
 int handle_getsec(struct kvm_vcpu *vcpu);
 
 #endif

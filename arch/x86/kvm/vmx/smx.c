@@ -7,6 +7,16 @@
 
 static int handle_getsec_capabilities(struct kvm_vcpu *vcpu)
 {
+    u32 eax;
+    u32 ebx = kvm_rbx_read(vcpu);
+
+#define CAPABILITIES_DEFAULT 0
+    if (ebx == CAPABILITIES_DEFAULT) {
+        eax = CAPABILITIES_ENTERACCS | CAPABILITIES_EXITAC;
+        kvm_rax_write(vcpu, eax);
+    } else {
+        kvm_rax_write(vcpu, 0);
+    }
     return 0;
 }
 
