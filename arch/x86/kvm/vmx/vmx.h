@@ -421,6 +421,10 @@ bool __vmx_vcpu_run(struct vcpu_vmx *vmx, unsigned long *regs,
 int vmx_find_loadstore_msr_slot(struct vmx_msrs *m, u32 msr);
 void vmx_ept_load_pdptrs(struct kvm_vcpu *vcpu);
 
+void vmx_flush_tlb_guest(struct kvm_vcpu *vcpu);
+
+
+
 void vmx_disable_intercept_for_msr(struct kvm_vcpu *vcpu, u32 msr, int type);
 void vmx_enable_intercept_for_msr(struct kvm_vcpu *vcpu, u32 msr, int type);
 
