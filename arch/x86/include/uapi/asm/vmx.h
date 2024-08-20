@@ -39,6 +39,7 @@
 #define EXIT_REASON_NMI_WINDOW          8
 #define EXIT_REASON_TASK_SWITCH         9
 #define EXIT_REASON_CPUID               10
+#define EXIT_REASON_GETSEC				11
 #define EXIT_REASON_HLT                 12
 #define EXIT_REASON_INVD                13
 #define EXIT_REASON_INVLPG              14
