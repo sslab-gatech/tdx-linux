@@ -145,7 +145,7 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
 
     cs.selector = (u16) acm_header->seg_sel;
     cs.base = 0;
-    cs.limit = 0xFFFFF;
+    cs.limit = 0xFFFFFFFF; // This differs from Intel SDM
     cs.g = 1;
     cs.db = 1;
     cs.present = 1;
@@ -155,12 +155,12 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
 
     ds.selector = (u16) acm_header->seg_sel + 8;
     ds.base = 0;
-    ds.limit = 0xFFFFF;
+    ds.limit = 0xFFFFFFFF; // This differs from Intel SDM
     ds.g = 1;
     ds.db = 1;
     ds.present = 1;
     ds.s = 1;
-    ds.type = 0x9;
+    ds.type = 0x3;
     __vmx_set_segment(vcpu, &ds, VCPU_SREG_DS);
 
     if (kvm_set_dr(vcpu, 7, 0x400))
