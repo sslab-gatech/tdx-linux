@@ -11,6 +11,7 @@
 
 static void dump_acm_header(struct acm_header *acm_header);
 static int authenticate_acm(struct acm_header *acm_header);
+static void dump_post_enteraccs(struct kvm_vcpu *vcpu);
 
 static int handle_getsec_capabilities(struct kvm_vcpu *vcpu)
 {
@@ -172,15 +173,19 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
     //       Subtract it beforehand to place rip in correct location.
     kvm_rip_write(vcpu, entry_point - instr_len);
 
+    dump_post_enteraccs(vcpu);
+
     return 0;
 
 shutdown:
     kfree(acm_header);
+    printk(KERN_WARNING "TXT shutdown\n");
 // TODO: Emulate TXT shutdown
     return 1;
 
 err:
     kfree(acm_header);
+    printk(KERN_ERR "Error while GETSEC[ENTERACCS]\n");
 // TODO: Handle internal KVM error
     return 1;
 }
@@ -223,6 +228,43 @@ static void dump_acm_header(struct acm_header *acm_header)
 static int authenticate_acm(struct acm_header *acm_header)
 {
     return 0;
+}
+
+static void dump_post_enteraccs(struct kvm_vcpu *vcpu)
+{
+    unsigned long cr0, cr4;
+    u32 eip, eflags, ebx, ecx, edx, ebp;
+    struct desc_ptr gdt;
+    struct kvm_segment cs, ds;
+
+    cr0 = kvm_read_cr0(vcpu);
+    cr4 = kvm_read_cr4(vcpu);
+    eflags = kvm_get_rflags(vcpu);
+    eip = kvm_rip_read(vcpu);
+    ebx = kvm_rbx_read(vcpu);
+    ecx = kvm_rcx_read(vcpu);
+    edx = kvm_rdx_read(vcpu);
+    ebp = kvm_rbp_read(vcpu);
+    vmx_get_gdt(vcpu, &gdt);
+    vmx_get_segment(vcpu, &cs, VCPU_SREG_CS);
+    vmx_get_segment(vcpu, &ds, VCPU_SREG_DS);
+
+    printk(KERN_WARNING \
+"""Post ENTERACCS State\n\
+\tCR0: 0x%08X\n\
+\tCR4: 0x%08X\n\
+\tEFLAGS: 0x%08X\n\
+\tEIP: 0x%08X\n\
+\tEBX: 0x%08X\n\
+\tECX: 0x%08X\n\
+\tEDX: 0x%08X\n\
+\tCS: 0x%08X.0x%08X | sel: 0x%04X | g: %d | db: %d | p: %d | s:%d | type: 0x%1X\n\
+\tDS: 0x%08X.0x%08X | sel: 0x%04X | g: %d | db: %d | p: %d | s:%d | type: 0x%1X\n\
+\tGDT: 0x%08X.0x%08X\n\
+""", (u32) cr0, (u32) cr4, eflags, eip, ebx, ecx, edx,
+     (u32) cs.base, cs.limit, cs.selector, cs.g, cs.db, cs.present, cs.s, cs.type,
+     (u32) ds.base, ds.limit, ds.selector, ds.g, ds.db, ds.present, ds.s, ds.type,
+     (u32) gdt.address, gdt.size);
 }
 
 static int handle_getsec_exitac(struct kvm_vcpu *vcpu)
