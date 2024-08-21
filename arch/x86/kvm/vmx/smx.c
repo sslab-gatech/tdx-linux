@@ -7,6 +7,8 @@
 #include "vmx.h"
 #include "smx.h"
 
+#include <asm/asm.h>
+
 static void dump_acm_header(struct acm_header *acm_header);
 static int authenticate_acm(struct acm_header *acm_header);
 
@@ -34,6 +36,11 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
     struct acm_header *acm_header;
     int ret;
 
+    unsigned long cr0, cr4;
+    u32 entry_point, eip, next_eip, instr_len;
+    struct desc_ptr old_gdt, gdt;
+    struct kvm_segment old_cs, cs, ds;
+
     {
         /* Bunch of sanity checks go here.
          * See Intel SDM Volume 2D 7.3
@@ -54,28 +61,116 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
         if (acm_base % ACMBASE_ALIGN != 0 || acm_size % ACMSIZE_ALIGN != 0 ||
             (acm_base + acm_size) > ACMADDR_LIMIT)
             return 1;
-    }
+
 // TODO: Mask external signals INIT#, A20M, NMI#, and SMI# asserted to ILPs
 
-    vmx_flush_tlb_guest(vcpu);
-    vmx->authenticated_code_execution_mode = true;
+        vmx_flush_tlb_guest(vcpu);
+        vmx->authenticated_code_execution_mode = true;
 
 // TODO: Shut down TXT upon detecting memory for ACM is not WB
 
-    acm_header = (struct acm_header *) kmalloc(sizeof(struct acm_header), GFP_KERNEL);
-    ret = kvm_vcpu_read_guest(vcpu, acm_base, (void *) acm_header, sizeof(struct acm_header));
-    if (ret)
-        goto err;
+        acm_header = (struct acm_header *) kmalloc(sizeof(struct acm_header), GFP_KERNEL);
+        ret = kvm_vcpu_read_guest(vcpu, acm_base, (void *) acm_header, sizeof(struct acm_header));
+        if (ret)
+            goto err;
 
-    dump_acm_header(acm_header);
+        dump_acm_header(acm_header);
 
 #define ACM_HEADER_VERSION  0x30000
 #define ACM_MODULE_TYPE     2
-    if (acm_header->header_version != ACM_HEADER_VERSION || acm_header->module_type != ACM_MODULE_TYPE)
-        goto shutdown;
+        if (acm_header->header_version != ACM_HEADER_VERSION || acm_header->module_type != ACM_MODULE_TYPE)
+            goto shutdown;
 
-    if (authenticate_acm(acm_header))
-        goto shutdown;
+        if (authenticate_acm(acm_header))
+            goto shutdown;
+
+// TODO: Check CodeControl
+
+        if ((acm_header->gdt_base_ptr < acm_header->header_len * 4 + acm_header->scratch_size) ||
+            (acm_header->gdt_base_ptr + acm_header->gdt_limit > acm_size))
+            goto shutdown;
+
+        if (acm_header->code_control)
+            goto err;
+        entry_point = acm_base + acm_header->entry_point;
+
+        if ((acm_header->entry_point >= acm_size) ||
+            (acm_header->entry_point < acm_header->header_len * 4 + acm_header->scratch_size))
+            goto shutdown;
+
+        if (acm_header->gdt_limit & 0xFFFF0000)
+            goto shutdown;
+
+        if ((acm_header->seg_sel > acm_header->gdt_limit - 15) ||
+            (acm_header->seg_sel < 8))
+            goto shutdown;
+
+        if ((acm_header->seg_sel & SEGMENT_TI_MASK) || (acm_header->seg_sel & SEGMENT_RPL_MASK))
+            goto shutdown;
+    }
+
+    if (kvm_set_msr(vcpu, MSR_IA32_MISC_ENABLE, 0))
+        goto err;
+
+    cr0 = kvm_read_cr0(vcpu);
+    cr0 = cr0 & ~(X86_CR0_WP | X86_CR0_AM | X86_CR0_PG);
+    if (kvm_set_cr0(vcpu, cr0))
+        goto err;
+
+    cr4 = kvm_read_cr4(vcpu);
+    cr4 = cr4 & ~(X86_CR4_MCE | X86_CR4_CET | X86_CR4_PCIDE);
+    if (kvm_set_cr4(vcpu, cr4))
+        goto err;
+
+    kvm_set_rflags(vcpu, 0x2);
+    if (kvm_set_msr(vcpu, MSR_EFER, 0x0))
+        goto err;
+
+    eip = kvm_rip_read(vcpu);
+    instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
+    next_eip = eip + instr_len;
+    kvm_rbx_write(vcpu, next_eip);
+
+    vmx_get_gdt(vcpu, &old_gdt);
+    vmx_get_segment(vcpu, &old_cs, VCPU_SREG_CS);
+    kvm_rcx_write(vcpu, old_gdt.size << 16 | old_cs.selector);
+    kvm_rdx_write(vcpu, (u32) old_gdt.address);
+
+    kvm_rbp_write(vcpu, acm_base);
+
+    gdt.address = (unsigned long) (acm_base + acm_header->gdt_base_ptr);
+    gdt.size = acm_header->gdt_limit;
+    vmx_set_gdt(vcpu, &gdt);
+
+    cs.selector = (u16) acm_header->seg_sel;
+    cs.base = 0;
+    cs.limit = 0xFFFFF;
+    cs.g = 1;
+    cs.db = 1;
+    cs.present = 1;
+    cs.s = 1;
+    cs.type = 0xB;
+    __vmx_set_segment(vcpu, &cs, VCPU_SREG_CS);
+
+    ds.selector = (u16) acm_header->seg_sel + 8;
+    ds.base = 0;
+    ds.limit = 0xFFFFF;
+    ds.g = 1;
+    ds.db = 1;
+    ds.present = 1;
+    ds.s = 1;
+    ds.type = 0x9;
+    __vmx_set_segment(vcpu, &ds, VCPU_SREG_DS);
+
+    if (kvm_set_dr(vcpu, 7, 0x400))
+        goto err;
+
+    if (kvm_set_msr(vcpu, MSR_IA32_DEBUGCTLMSR, 0))
+        goto err;
+
+    // NOTE: kvm_complete_insn_gp forwards rip by instr_len as it skips the emulated instruction.
+    //       Subtract it beforehand to place rip in correct location.
+    kvm_rip_write(vcpu, entry_point - instr_len);
 
     return 0;
 
