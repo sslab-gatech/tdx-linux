@@ -7,6 +7,30 @@
 #define MSR_IA32_BIOS_DONE      0x151
 #define MSR_IA32_BIOS_SE_SVN    0x302
 
+#define MTRR_SEAMRR_ENABLED             BIT(15)
+
+#define MSR_IA32_SEAMRR_PHYS_BASE       0x1400
+#define MSR_IA32_SEAMRR_PHYS_MASK       0x1401
+
+#define SEAMRR_BASE_CONFIGURE_OFFSET    3
+#define SEAMRR_BASE_CONFIGURED          BIT(3)
+#define SEAMRR_BASE_ALIGN               25
+#define SEAMRR_BASE_BITS_MASK(maxphyaddr)   (((1ULL<<maxphyaddr) - 1) & ~((1ULL<<SEAMRR_BASE_ALIGN) - 1))
+#define SEAMRR_MASK_LOCK_OFFSET             10
+#define SEAMRR_MASK_LOCKED                  BIT(10)
+#define SEAMRR_MASK_ENABLE_OFFSET           11
+#define SEAMRR_MASK_ENABLED                 BIT(11)
+#define SEAMRR_MASK_ALIGN               25
+#define SEAMRR_MASK_BITS_MASK(maxphyaddr)   (((1ULL<<maxphyaddr) - 1) & ~((1ULL<<SEAMRR_MASK_ALIGN) - 1))
+
+struct seam_range {
+    u8 configured;
+    u8 locked;
+    u8 enabled;
+    u64 base;
+    u64 mask;
+};
+
 enum smx_getsec_function {
     CAPABILITIES = 0x00,
     ENTERACCS    = 0x02,

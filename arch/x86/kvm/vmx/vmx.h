@@ -16,6 +16,8 @@
 #include "../cpuid.h"
 #include "run_flags.h"
 
+#include "smx.h"
+
 #define MSR_TYPE_R	1
 #define MSR_TYPE_W	2
 #define MSR_TYPE_RW	3
@@ -371,6 +373,8 @@ struct vcpu_vmx {
 	bool authenticated_code_execution_mode;
 	u64 msr_ia32_bios_se_svn;
 	u64 msr_ia32_bios_done;
+
+	struct seam_range seamrr;
 };
 
 struct kvm_vmx {

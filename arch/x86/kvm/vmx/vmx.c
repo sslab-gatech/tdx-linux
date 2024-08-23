@@ -2144,6 +2144,21 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_BIOS_SE_SVN:
 		msr_info->data = vmx->msr_ia32_bios_se_svn;
 		break;
+	case MSR_MTRRcap:
+		msr_info->data = ((open_tdx ? MTRR_SEAMRR_ENABLED : 0) | 
+						  kvm_get_msr_common(vcpu, msr_info));
+		break;
+	case MSR_IA32_SEAMRR_PHYS_BASE:
+		if (!open_tdx) return 1;
+		msr_info->data = ((vmx->seamrr.base & SEAMRR_BASE_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
+						  (vmx->seamrr.configured << SEAMRR_BASE_CONFIGURE_OFFSET));
+		break;
+	case MSR_IA32_SEAMRR_PHYS_MASK:
+		if (!open_tdx) return 1;
+		msr_info->data = ((vmx->seamrr.mask & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
+						  (vmx->seamrr.locked << SEAMRR_MASK_LOCK_OFFSET) |
+						  (vmx->seamrr.enabled << SEAMRR_MASK_ENABLE_OFFSET));
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);
@@ -2483,11 +2498,29 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		ret = kvm_set_msr_common(vcpu, msr_info);
 		break;
 	case MSR_IA32_BIOS_DONE:
-		return 1;
+		vmx->msr_ia32_bios_done = data & 1;
+		break;
 	case MSR_IA32_BIOS_SE_SVN:
 		if (data & 0xFF)
 			return 1;
 		vmx->msr_ia32_bios_se_svn = data;
+		break;
+	case MSR_IA32_SEAMRR_PHYS_BASE:
+		if (vmx->seamrr.locked)
+			return 1;
+		if (data & ~(SEAMRR_BASE_BITS_MASK(cpuid_maxphyaddr(vcpu)) | SEAMRR_BASE_CONFIGURED))
+			return 1;
+		vmx->seamrr.base = data & SEAMRR_BASE_BITS_MASK(cpuid_maxphyaddr(vcpu));
+		vmx->seamrr.configured = (data & SEAMRR_BASE_CONFIGURED) >> SEAMRR_BASE_CONFIGURE_OFFSET;
+		break;
+	case MSR_IA32_SEAMRR_PHYS_MASK:
+		if (vmx->seamrr.locked)
+			return 1;
+		if (data & ~(SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu)) | SEAMRR_MASK_LOCKED | SEAMRR_MASK_ENABLED))
+			return 1;
+		vmx->seamrr.mask = data & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu));
+		vmx->seamrr.locked = (data & SEAMRR_MASK_LOCKED) >> SEAMRR_MASK_LOCK_OFFSET;
+		vmx->seamrr.enabled = (data & SEAMRR_MASK_ENABLED) >> SEAMRR_MASK_ENABLE_OFFSET;
 		break;
 	default:
 	find_uret_msr:
@@ -4924,6 +4957,8 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vmx->msr_ia32_umwait_control = 0;
 	vmx->msr_ia32_bios_se_svn = 0;
 	vmx->msr_ia32_bios_done = 1;
+	vmx->seamrr.base = 0;
+	vmx->seamrr.mask = 0;
 
 	vmx->hv_deadline_tsc = -1;
 	kvm_set_cr8(vcpu, 0);
