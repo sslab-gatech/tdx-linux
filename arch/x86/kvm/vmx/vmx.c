@@ -2138,6 +2138,12 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_DEBUGCTLMSR:
 		msr_info->data = vmcs_read64(GUEST_IA32_DEBUGCTL);
 		break;
+	case MSR_IA32_BIOS_DONE:
+		msr_info->data = vmx->msr_ia32_bios_done;
+		break;
+	case MSR_IA32_BIOS_SE_SVN:
+		msr_info->data = vmx->msr_ia32_bios_se_svn;
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);
@@ -2476,7 +2482,13 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		}
 		ret = kvm_set_msr_common(vcpu, msr_info);
 		break;
-
+	case MSR_IA32_BIOS_DONE:
+		return 1;
+	case MSR_IA32_BIOS_SE_SVN:
+		if (data & 0xFF)
+			return 1;
+		vmx->msr_ia32_bios_se_svn = data;
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_index);
@@ -4910,6 +4922,8 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vmx->spec_ctrl = 0;
 
 	vmx->msr_ia32_umwait_control = 0;
+	vmx->msr_ia32_bios_se_svn = 0;
+	vmx->msr_ia32_bios_done = 1;
 
 	vmx->hv_deadline_tsc = -1;
 	kvm_set_cr8(vcpu, 0);

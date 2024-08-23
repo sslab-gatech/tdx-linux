@@ -369,6 +369,8 @@ struct vcpu_vmx {
 	} shadow_msr_intercept;
 
 	bool authenticated_code_execution_mode;
+	u64 msr_ia32_bios_se_svn;
+	u64 msr_ia32_bios_done;
 };
 
 struct kvm_vmx {

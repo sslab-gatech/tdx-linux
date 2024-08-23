@@ -4,6 +4,9 @@
 
 #include <linux/kvm_host.h>
 
+#define MSR_IA32_BIOS_DONE      0x151
+#define MSR_IA32_BIOS_SE_SVN    0x302
+
 enum smx_getsec_function {
     CAPABILITIES = 0x00,
     ENTERACCS    = 0x02,
