@@ -23,12 +23,35 @@
 #define SEAMRR_MASK_ALIGN               25
 #define SEAMRR_MASK_BITS_MASK(maxphyaddr)   (((1ULL<<maxphyaddr) - 1) & ~((1ULL<<SEAMRR_MASK_ALIGN) - 1))
 
+#define P_SEAMLDR_RANGE_SIZE            (1ULL << SEAMRR_MASK_ALIGN)
+
 struct seam_range {
     u8 configured;
     u8 locked;
     u8 enabled;
     u64 base;
-    u64 mask;
+    u64 size;
+};
+
+#define SYS_INFO_TABLE_SOCKET_CPUID_TABLE_SIZE  8
+#define SYS_INFO_TABLE_NUM_CMRS                 32
+
+struct mem_range {
+    u64 base;
+    u64 size;
+};
+
+struct sys_info_table {
+    u64 version;
+    u32 tot_num_lps;
+    u32 tot_num_sockets;
+    u32 socket_cpuid_table[SYS_INFO_TABLE_SOCKET_CPUID_TABLE_SIZE];
+    struct mem_range p_seamldr_range;
+    u8 skip_smrr2_check;
+    u8 tdx_ac;
+    u8 reserved0[62];
+    struct mem_range cmr[SYS_INFO_TABLE_NUM_CMRS];
+    // u8 reserved1[1408]; // Commented due to frame size warning
 };
 
 enum smx_getsec_function {
@@ -93,6 +116,7 @@ struct acm_header {
     u8 rsa_sig[384]; // Version 3.0
 };
 
+void mcheck(struct kvm_vcpu *vcpu, u64 gpa);
 int handle_getsec(struct kvm_vcpu *vcpu);
 
 #endif

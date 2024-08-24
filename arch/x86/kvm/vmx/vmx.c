@@ -2155,7 +2155,7 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_SEAMRR_PHYS_MASK:
 		if (!open_tdx) return 1;
-		msr_info->data = ((vmx->seamrr.mask & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
+		msr_info->data = ((vmx->seamrr.size & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
 						  (vmx->seamrr.locked << SEAMRR_MASK_LOCK_OFFSET) |
 						  (vmx->seamrr.enabled << SEAMRR_MASK_ENABLE_OFFSET));
 		break;
@@ -2518,9 +2518,10 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 		if (data & ~(SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu)) | SEAMRR_MASK_LOCKED | SEAMRR_MASK_ENABLED))
 			return 1;
-		vmx->seamrr.mask = data & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu));
+		vmx->seamrr.size = data & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu));
 		vmx->seamrr.locked = (data & SEAMRR_MASK_LOCKED) >> SEAMRR_MASK_LOCK_OFFSET;
 		vmx->seamrr.enabled = (data & SEAMRR_MASK_ENABLED) >> SEAMRR_MASK_ENABLE_OFFSET;
+		mcheck(vcpu, vmx->seamrr.base + vmx->seamrr.size - PAGE_SIZE);
 		break;
 	default:
 	find_uret_msr:
@@ -4958,7 +4959,7 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vmx->msr_ia32_bios_se_svn = 0;
 	vmx->msr_ia32_bios_done = 1;
 	vmx->seamrr.base = 0;
-	vmx->seamrr.mask = 0;
+	vmx->seamrr.size = 0;
 
 	vmx->hv_deadline_tsc = -1;
 	kvm_set_cr8(vcpu, 0);
