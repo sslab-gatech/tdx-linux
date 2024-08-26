@@ -2163,9 +2163,7 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 						  (vmx->seamrr.enabled << SEAMRR_MASK_ENABLE_OFFSET));
 		break;
 	case MSR_IA32_SEAMEXTEND:
-		if (!open_tdx) return 1;
-		handle_seam_extend(vcpu);
-		break;
+		return 1;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);

@@ -63,14 +63,19 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 void handle_seam_extend(struct kvm_vcpu *vcpu)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
-    u64 rcx = kvm_rcx_read(vcpu);
-    gpa_t gpa = rcx & ~1ULL;
+    u64 rdx, rax, value;
+    rdx = kvm_rdx_read(vcpu);
+    rax = kvm_rax_read(vcpu);
+    value = (rdx << 32) | (rax & 0xFFFFFFFF);
 
-    if (rcx & 1) {
+    gpa_t gpa = value & ~0x1ULL;
+
+    if (value & 1) {
         kvm_write_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
     } else {
         kvm_read_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
     }
+    vmx->seam_extend.valid = 1;
 }
 EXPORT_SYMBOL(handle_seam_extend);
 
