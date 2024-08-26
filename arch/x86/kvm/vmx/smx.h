@@ -11,6 +11,7 @@
 
 #define MSR_IA32_SEAMRR_PHYS_BASE       0x1400
 #define MSR_IA32_SEAMRR_PHYS_MASK       0x1401
+#define MSR_IA32_SEAMEXTEND             0x1402
 
 #define SEAMRR_BASE_CONFIGURE_OFFSET    3
 #define SEAMRR_BASE_CONFIGURED          BIT(3)
@@ -52,6 +53,18 @@ struct sys_info_table {
     u8 reserved0[62];
     struct mem_range cmr[SYS_INFO_TABLE_NUM_CMRS];
     // u8 reserved1[1408]; // Commented due to frame size warning
+};
+
+struct msr_seam_extend {
+    u64 valid;
+    u8 tee_tcb_svn[16];
+    u8 mr_seam[48];
+    u8 mr_signer[48];
+    u64 attributes;
+    u8 seam_ready;
+    u8 seam_under_debug;
+    u8 p_seamldr_ready;
+    u8 reserved[5];
 };
 
 enum smx_getsec_function {
@@ -116,7 +129,8 @@ struct acm_header {
     u8 rsa_sig[384]; // Version 3.0
 };
 
-void mcheck(struct kvm_vcpu *vcpu, u64 gpa);
+void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
+void handle_seam_extend(struct kvm_vcpu *vcpu);
 int handle_getsec(struct kvm_vcpu *vcpu);
 
 #endif

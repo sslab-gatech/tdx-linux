@@ -13,7 +13,7 @@ static void dump_acm_header(struct acm_header *acm_header);
 static int authenticate_acm(struct acm_header *acm_header);
 static void dump_post_enteraccs(struct kvm_vcpu *vcpu);
 
-void mcheck(struct kvm_vcpu *vcpu, u64 gpa)
+void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
     struct sys_info_table sys_info_table;
@@ -59,6 +59,20 @@ void mcheck(struct kvm_vcpu *vcpu, u64 gpa)
 
     free_page((unsigned long) empty);
 }
+
+void handle_seam_extend(struct kvm_vcpu *vcpu)
+{
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    u64 rcx = kvm_rcx_read(vcpu);
+    gpa_t gpa = rcx & ~1ULL;
+
+    if (rcx & 1) {
+        kvm_write_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
+    } else {
+        kvm_read_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
+    }
+}
+EXPORT_SYMBOL(handle_seam_extend);
 
 static int handle_getsec_capabilities(struct kvm_vcpu *vcpu)
 {

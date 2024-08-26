@@ -2159,6 +2159,10 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 						  (vmx->seamrr.locked << SEAMRR_MASK_LOCK_OFFSET) |
 						  (vmx->seamrr.enabled << SEAMRR_MASK_ENABLE_OFFSET));
 		break;
+	case MSR_IA32_SEAMEXTEND:
+		if (!open_tdx) return 1;
+		handle_seam_extend(vcpu);
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);
@@ -2522,6 +2526,9 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		vmx->seamrr.locked = (data & SEAMRR_MASK_LOCKED) >> SEAMRR_MASK_LOCK_OFFSET;
 		vmx->seamrr.enabled = (data & SEAMRR_MASK_ENABLED) >> SEAMRR_MASK_ENABLE_OFFSET;
 		mcheck(vcpu, vmx->seamrr.base + vmx->seamrr.size - PAGE_SIZE);
+		break;
+	case MSR_IA32_SEAMEXTEND:
+		handle_seam_extend(vcpu);
 		break;
 	default:
 	find_uret_msr:
@@ -4960,6 +4967,10 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vmx->msr_ia32_bios_done = 1;
 	vmx->seamrr.base = 0;
 	vmx->seamrr.size = 0;
+
+	vmx->seam_extend.valid = 1;
+	vmx->seam_extend.seam_ready = 0;
+	vmx->seam_extend.p_seamldr_ready = 0;
 
 	vmx->hv_deadline_tsc = -1;
 	kvm_set_cr8(vcpu, 0);
