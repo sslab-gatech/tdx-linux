@@ -9,6 +9,8 @@
 
 #define MTRR_SEAMRR_ENABLED             BIT(15)
 
+#define MSR_IA32_SGX_DEBUG_MODE         0x503
+
 #define MSR_IA32_SEAMRR_PHYS_BASE       0x1400
 #define MSR_IA32_SEAMRR_PHYS_MASK       0x1401
 #define MSR_IA32_SEAMEXTEND             0x1402

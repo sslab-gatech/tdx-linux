@@ -2148,6 +2148,9 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = ((open_tdx ? MTRR_SEAMRR_ENABLED : 0) | 
 						  kvm_get_msr_common(vcpu, msr_info));
 		break;
+	case MSR_IA32_SGX_DEBUG_MODE:
+		msr_info->data = 0;
+		break;
 	case MSR_IA32_SEAMRR_PHYS_BASE:
 		if (!open_tdx) return 1;
 		msr_info->data = ((vmx->seamrr.base & SEAMRR_BASE_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
@@ -2509,6 +2512,8 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 		vmx->msr_ia32_bios_se_svn = data;
 		break;
+	case MSR_IA32_SGX_DEBUG_MODE:
+		return 1;
 	case MSR_IA32_SEAMRR_PHYS_BASE:
 		if (vmx->seamrr.locked)
 			return 1;
