@@ -179,19 +179,7 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
     if (kvm_set_msr(vcpu, MSR_IA32_MISC_ENABLE, 0))
         goto err;
 
-    cr0 = kvm_read_cr0(vcpu);
-    cr0 = cr0 & ~(X86_CR0_WP | X86_CR0_AM | X86_CR0_PG);
-    if (kvm_set_cr0(vcpu, cr0))
-        goto err;
-
-    cr4 = kvm_read_cr4(vcpu);
-    cr4 = cr4 & ~(X86_CR4_MCE | X86_CR4_CET | X86_CR4_PCIDE);
-    if (kvm_set_cr4(vcpu, cr4))
-        goto err;
-
     kvm_set_rflags(vcpu, 0x2);
-    if (kvm_set_msr(vcpu, MSR_EFER, 0x0))
-        goto err;
 
     eip = kvm_rip_read(vcpu);
     instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
@@ -211,7 +199,7 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
 
     cs.selector = (u16) acm_header->seg_sel;
     cs.base = 0;
-    cs.limit = 0xFFFFFFFF; // This differs from Intel SDM
+    cs.limit = 0xFFFFFFFF;
     cs.g = 1;
     cs.db = 1;
     cs.present = 1;
@@ -221,13 +209,26 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
 
     ds.selector = (u16) acm_header->seg_sel + 8;
     ds.base = 0;
-    ds.limit = 0xFFFFFFFF; // This differs from Intel SDM
+    ds.limit = 0xFFFFFFFF;
     ds.g = 1;
     ds.db = 1;
     ds.present = 1;
     ds.s = 1;
     ds.type = 0x3;
     __vmx_set_segment(vcpu, &ds, VCPU_SREG_DS);
+
+    cr0 = kvm_read_cr0(vcpu);
+    cr0 = cr0 & ~(X86_CR0_WP | X86_CR0_AM | X86_CR0_PG);
+    if (kvm_set_cr0(vcpu, cr0))
+        goto err;
+
+    cr4 = kvm_read_cr4(vcpu);
+    cr4 = cr4 & ~(X86_CR4_MCE | X86_CR4_CET | X86_CR4_PCIDE);
+    if (kvm_set_cr4(vcpu, cr4))
+        goto err;
+
+    if (kvm_set_msr(vcpu, MSR_EFER, 0x0))
+        goto err;
 
     if (kvm_set_dr(vcpu, 7, 0x400))
         goto err;
