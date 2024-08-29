@@ -68,6 +68,7 @@
 #include "smm.h"
 #include "vmx_onhyperv.h"
 #include "smx.h"
+#include "seam.h"
 
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");

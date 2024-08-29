@@ -13,71 +13,6 @@ static void dump_acm_header(struct acm_header *acm_header);
 static int authenticate_acm(struct acm_header *acm_header);
 static void dump_post_enteraccs(struct kvm_vcpu *vcpu);
 
-void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
-{
-    struct vcpu_vmx *vmx = to_vmx(vcpu);
-    struct sys_info_table sys_info_table;
-    u32 eax = 0x1, ebx, ecx, edx;
-    int i;
-
-    struct page *empty_page = alloc_page(GFP_KERNEL);
-    // TODO: handle if alloc_page failed
-
-    void *empty = page_address(empty_page);
-    memset(empty, 0, PAGE_SIZE);
-
-    sys_info_table.version = 0;
-    sys_info_table.tot_num_lps = vcpu->kvm->created_vcpus;
-    sys_info_table.tot_num_sockets = 1; // TODO: disable NUMA in QEMU
-
-    kvm_cpuid(vcpu, &eax, &ebx, &ecx, &edx, false);
-    for (i = 0; i < SYS_INFO_TABLE_SOCKET_CPUID_TABLE_SIZE; i++) {
-        if (i < sys_info_table.tot_num_sockets) {
-            sys_info_table.socket_cpuid_table[i] = eax;
-        } else {
-            sys_info_table.socket_cpuid_table[i] = 0;
-        }
-    }
-
-    sys_info_table.p_seamldr_range.base = vmx->seamrr.base + vmx->seamrr.size - P_SEAMLDR_RANGE_SIZE;
-    sys_info_table.p_seamldr_range.size = P_SEAMLDR_RANGE_SIZE;
-
-    sys_info_table.skip_smrr2_check = 0;
-    sys_info_table.tdx_ac = 0;
-
-    // Allow entire physical memory over 4GB as CMR
-#define _4GB    0x100000000
-    sys_info_table.cmr[0].base = _4GB;
-    sys_info_table.cmr[0].size = cpuid_maxphyaddr(vcpu) - _4GB;
-    for (i = 1; i < SYS_INFO_TABLE_NUM_CMRS; i++) {
-        sys_info_table.cmr[i].base = 0;
-        sys_info_table.cmr[i].size = 0;
-    }
-
-    kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(gpa), empty, 0, PAGE_SIZE);
-    kvm_write_guest(vcpu->kvm, gpa, (void *) &sys_info_table, sizeof(sys_info_table));
-
-    free_page((unsigned long) empty);
-}
-
-void handle_seam_extend(struct kvm_vcpu *vcpu)
-{
-    struct vcpu_vmx *vmx = to_vmx(vcpu);
-    u64 rdx, rax, value;
-    rdx = kvm_rdx_read(vcpu);
-    rax = kvm_rax_read(vcpu);
-    value = (rdx << 32) | (rax & 0xFFFFFFFF);
-
-    gpa_t gpa = value & ~0x1ULL;
-
-    if (value & 1) {
-        kvm_write_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
-    } else {
-        kvm_read_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
-    }
-    vmx->seam_extend.valid = 1;
-}
-EXPORT_SYMBOL(handle_seam_extend);
 
 static int handle_getsec_capabilities(struct kvm_vcpu *vcpu)
 {
@@ -176,7 +111,7 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
             goto shutdown;
     }
 
-    if (kvm_set_msr(vcpu, MSR_IA32_MISC_ENABLE, 0))
+    if (kvm_emulate_msr_write(vcpu, MSR_IA32_MISC_ENABLE, 0))
         goto err;
 
     kvm_set_rflags(vcpu, 0x2);
@@ -227,13 +162,13 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
     if (kvm_set_cr4(vcpu, cr4))
         goto err;
 
-    if (kvm_set_msr(vcpu, MSR_EFER, 0x0))
+    if (kvm_emulate_msr_write(vcpu, MSR_EFER, 0x0))
         goto err;
 
     if (kvm_set_dr(vcpu, 7, 0x400))
         goto err;
 
-    if (kvm_set_msr(vcpu, MSR_IA32_DEBUGCTLMSR, 0))
+    if (kvm_emulate_msr_write(vcpu, MSR_IA32_DEBUGCTLMSR, 0))
         goto err;
 
     // NOTE: kvm_complete_insn_gp forwards rip by instr_len as it skips the emulated instruction.
@@ -364,7 +299,7 @@ static int handle_getsec_exitac(struct kvm_vcpu *vcpu)
     }
 
     vmx->authenticated_code_execution_mode = false;
-    kvm_get_msr(vcpu, MSR_EFER, &efer);
+    kvm_emulate_msr_read(vcpu, MSR_EFER, &efer);
     if (efer & EFER_LMA) {
         r8 = kvm_r8_read(vcpu);
         kvm_set_cr3(vcpu, r8);
@@ -406,3 +341,4 @@ int handle_getsec(struct kvm_vcpu *vcpu)
 	return kvm_complete_insn_gp(vcpu, err);
 
 }
+EXPORT_SYMBOL(handle_getsec);
