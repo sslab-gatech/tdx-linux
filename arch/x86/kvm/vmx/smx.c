@@ -337,6 +337,42 @@ static void dump_post_enteraccs(struct kvm_vcpu *vcpu)
 
 static int handle_getsec_exitac(struct kvm_vcpu *vcpu)
 {
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    u64 efer;
+    u32 ebx, edx, r8, instr_len;
+    struct kvm_segment old_cs;
+
+    ebx = kvm_rbx_read(vcpu);
+    edx = kvm_rdx_read(vcpu);
+    vmx_get_segment(vcpu, &old_cs, VCPU_SREG_CS);
+
+    {
+        /* Bunch of sanity checks go here.
+         * See Intel SDM Volume 2D 7.3
+         */
+
+        if (!(is_protmode(vcpu) && (vmx_get_cpl(vcpu) == 0) &&
+              !(vmx_get_rflags(vcpu) & X86_EFLAGS_VM) &&
+              vmx->authenticated_code_execution_mode &&
+              (edx == 0))) {
+                return 1;
+            }
+
+        if (ebx > (old_cs.base + old_cs.limit))
+            return 1;
+
+    }
+
+    vmx->authenticated_code_execution_mode = false;
+    kvm_get_msr(vcpu, MSR_EFER, &efer);
+    if (efer & EFER_LMA) {
+        r8 = kvm_r8_read(vcpu);
+        kvm_set_cr3(vcpu, r8);
+    }
+
+    instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
+    kvm_rip_write(vcpu, ebx - instr_len);
+
     return 0;
 }
 
