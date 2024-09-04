@@ -64,6 +64,26 @@ struct msr_seam_extend {
     u8 reserved[5];
 };
 
+#define vmcs_read(field) \
+    *((u64 *) ((u8 *) (vmcs + VMX_##field##_OFFSET))) & ((1ULL << (BITS_PER_BYTE * VMX_##field##_SIZE)) - 1)
+#define vmcs_write(field, value) \
+    switch(VMX_##field##_SIZE) { \
+    case 1: \
+        *((u8 *) (vmcs + VMX_##field##_OFFSET)) = ((u8) value); \
+        break; \
+    case 2: \
+        *((u16 *) ((u8 *) (vmcs + VMX_##field##_OFFSET))) = ((u16) value); \
+        break; \
+    case 4: \
+        *((u32 *) ((u8 *) (vmcs + VMX_##field##_OFFSET))) = ((u32) value); \
+        break; \
+    case 8: \
+        *((u64 *) ((u8 *) (vmcs + VMX_##field##_OFFSET))) = ((u64) value); \
+        break; \
+    default: \
+        printk(KERN_WARNING "%s: unsupported size %d for vmcs_write\n", __func__, VMX_##field##_SIZE); \
+    }
+
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
 void handle_seam_extend(struct kvm_vcpu *vcpu);
 

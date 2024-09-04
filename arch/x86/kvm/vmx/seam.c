@@ -75,11 +75,103 @@ void handle_seam_extend(struct kvm_vcpu *vcpu)
     vmx->seam_extend.valid = 1;
 }
 
-static void save_vmm_state(struct kvm_vcpu *vcpu, gpa_t vmcs)
+static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
+#define ONLY_DEFINES
+#include "vmx_vmcs.h"
+    u32 entry_ctls = vmcs_read(VM_ENTRY_CONTROL);
+    u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
+
+    /* 28.3 Saving Guest State */
+
+    /* 28.3.1 Saving Control Registers, Debug Registers, and MSRs */
+
+    vmcs_write(GUEST_CR0, vmcs_readl(GUEST_CR0));
+    vmcs_write(GUEST_CR3, vmcs_readl(GUEST_CR3));
+    vmcs_write(GUEST_CR4, vmcs_readl(GUEST_CR4));
+
+    vmcs_write(GUEST_IA32_SYSENTER_CS, vmcs_read32(GUEST_SYSENTER_CS));
+    vmcs_write(GUEST_IA32_SYSENTER_ESP, vmcs_readl(GUEST_SYSENTER_ESP));
+    vmcs_write(GUEST_IA32_SYSENTER_EIP, vmcs_readl(GUEST_SYSENTER_EIP));
+
+    if (exit_ctls & VM_EXIT_SAVE_DEBUG_CONTROLS) {
+        vmcs_write(GUEST_DR7, vmcs_readl(GUEST_DR7));
+        vmcs_write(GUEST_IA32_DEBUGCTLMSR_FULL, vmcs_read64(GUEST_IA32_DEBUGCTL));
+    }
+    if (exit_ctls & VM_EXIT_SAVE_IA32_PAT)
+        vmcs_write(GUEST_IA32_PAT_FULL, vmcs_read64(GUEST_IA32_PAT));
+    if (exit_ctls & VM_EXIT_SAVE_IA32_EFER)
+        vmcs_write(GUEST_IA32_EFER_FULL, vmcs_read64(GUEST_IA32_EFER));
+// TODO: IA32_BNDCFGS
+    if ((entry_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL) || (exit_ctls & VM_EXIT_CLEAR_IA32_RTIT_CTL))
+        vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
+// TODO: IA32_S_CET
+// TODO: IA32_LBR_CTL
+// TODO: IA32_PKRS
+// TODO: User interrupts
+// TODO: IA32_PERF_GLOBAL_CTL
+
+    /* 28.3.2 Saving Segment Registers and Descriptor-Table Registers */
+
+    vmcs_write(GUEST_CS_SELECTOR, vmcs_read16(GUEST_CS_SELECTOR));
+    vmcs_write(GUEST_CS_ARBYTE, vmcs_read32(GUEST_CS_AR_BYTES));
+    vmcs_write(GUEST_CS_LIMIT, vmcs_read32(GUEST_CS_LIMIT));
+    vmcs_write(GUEST_CS_BASE, vmcs_readl(GUEST_CS_BASE));
+
+    vmcs_write(GUEST_SS_SELECTOR, vmcs_read16(GUEST_SS_SELECTOR));
+    vmcs_write(GUEST_SS_ARBYTE, vmcs_read32(GUEST_SS_AR_BYTES));
+    vmcs_write(GUEST_SS_LIMIT, vmcs_read32(GUEST_SS_LIMIT));
+    vmcs_write(GUEST_SS_BASE, vmcs_readl(GUEST_SS_BASE));
+
+    vmcs_write(GUEST_DS_SELECTOR, vmcs_read16(GUEST_DS_SELECTOR));
+    vmcs_write(GUEST_DS_ARBYTE, vmcs_read32(GUEST_DS_AR_BYTES));
+    vmcs_write(GUEST_DS_LIMIT, vmcs_read32(GUEST_DS_LIMIT));
+    vmcs_write(GUEST_DS_BASE, vmcs_readl(GUEST_DS_BASE));
+
+    vmcs_write(GUEST_ES_SELECTOR, vmcs_read16(GUEST_ES_SELECTOR));
+    vmcs_write(GUEST_ES_ARBYTE, vmcs_read32(GUEST_ES_AR_BYTES));
+    vmcs_write(GUEST_ES_LIMIT, vmcs_read32(GUEST_ES_LIMIT));
+    vmcs_write(GUEST_ES_BASE, vmcs_readl(GUEST_ES_BASE));
+
+    vmcs_write(GUEST_FS_SELECTOR, vmcs_read16(GUEST_FS_SELECTOR));
+    vmcs_write(GUEST_FS_ARBYTE, vmcs_read32(GUEST_FS_AR_BYTES));
+    vmcs_write(GUEST_FS_LIMIT, vmcs_read32(GUEST_FS_LIMIT));
+    vmcs_write(GUEST_FS_BASE, vmcs_readl(GUEST_FS_BASE));
+
+    vmcs_write(GUEST_GS_SELECTOR, vmcs_read16(GUEST_GS_SELECTOR));
+    vmcs_write(GUEST_GS_ARBYTE, vmcs_read32(GUEST_GS_AR_BYTES));
+    vmcs_write(GUEST_GS_LIMIT, vmcs_read32(GUEST_GS_LIMIT));
+    vmcs_write(GUEST_GS_BASE, vmcs_readl(GUEST_GS_BASE));
+
+    vmcs_write(GUEST_LDTR_SELECTOR, vmcs_read16(GUEST_LDTR_SELECTOR));
+    vmcs_write(GUEST_LDTR_ARBYTE, vmcs_read32(GUEST_LDTR_AR_BYTES));
+    vmcs_write(GUEST_LDTR_LIMIT, vmcs_read32(GUEST_LDTR_LIMIT));
+    vmcs_write(GUEST_LDTR_BASE, vmcs_readl(GUEST_LDTR_BASE));
+
+    vmcs_write(GUEST_TR_SELECTOR, vmcs_read16(GUEST_TR_SELECTOR));
+    vmcs_write(GUEST_TR_ARBYTE, vmcs_read32(GUEST_TR_AR_BYTES));
+    vmcs_write(GUEST_TR_LIMIT, vmcs_read32(GUEST_TR_LIMIT));
+    vmcs_write(GUEST_TR_BASE, vmcs_readl(GUEST_TR_BASE));
+
+    /* 28.3.3 Saving RIP, RSP, RFLAGS, and SSP */
+
+    vmcs_write(GUEST_RSP, vmcs_readl(GUEST_RSP));
+    vmcs_write(GUEST_RIP, vmcs_readl(GUEST_RIP));
+    vmcs_write(GUEST_RFLAGS, vmcs_readl(GUEST_RFLAGS));
+// TODO: handling Resume Flag?
+
+    /* 28.3.4 Saving Non-Register State */
+    vmcs_write(GUEST_SLEEP_STATE, vmcs_read32(GUEST_ACTIVITY_STATE));
+    vmcs_write(GUEST_INTERRUPTIBILITY, vmcs_read32(GUEST_INTERRUPTIBILITY_INFO)); // TODO
+    vmcs_write(GUEST_PND_DEBUG_EXCEPTION, vmcs_read32(GUEST_PENDING_DBG_EXCEPTIONS)); // TODO
+// TODO: VMX-preemption timer value
+// NOTE: EPT is not used for SEAM VMCS
+
+    /* 28.4 Saving MSRs */
+    // NOTE: MSR Saving is not used for SEAM VMCS
 }
 
-static void load_seam_state(struct kvm_vcpu *vcpu, gpa_t vmcs)
+static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
 }
 
@@ -90,6 +182,11 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     u32 eax, ebx, ecx, edx;
     struct kvm_segment cs;
     int err = 0;
+
+    struct page *vmcs_page = alloc_page(GFP_KERNEL);
+    // TODO: handle if alloc_page failed
+
+    void *vmcs = page_address(vmcs_page);
 
     kvm_get_msr(vcpu, MSR_EFER, &efer);
     vmx_get_segment(vcpu, &cs, VCPU_SREG_CS);
@@ -139,10 +236,14 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
         printk(KERN_WARNING "%s: Do not support current-VMCS on SEAMCALL\n", 
                __func__);
 
+    kvm_read_guest_page(vcpu->kvm, gpa_to_gfn(seam_cvp), vmcs, 0, PAGE_SIZE);
+
 // TODO: Save event inhibits in VMM interruptability status
 // TODO: Inhibit SMI and NMI
-    save_vmm_state(vcpu, seam_cvp);
-    load_seam_state(vcpu, seam_cvp);
+    save_vmm_state(vcpu, (u8 *) vmcs);
+    load_seam_state(vcpu, (u8 *) vmcs);
+
+    kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(seam_cvp), vmcs, 0, PAGE_SIZE);
 
 exit:
     return kvm_complete_insn_gp(vcpu, 0);
