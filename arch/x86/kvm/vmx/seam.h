@@ -67,4 +67,6 @@ struct msr_seam_extend {
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
 void handle_seam_extend(struct kvm_vcpu *vcpu);
 
+int handle_seamcall(struct kvm_vcpu *vcpu);
+
 #endif

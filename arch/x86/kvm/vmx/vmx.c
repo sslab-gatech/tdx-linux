@@ -6256,6 +6256,7 @@ static int (*kvm_vmx_exit_handlers[])(struct kvm_vcpu *vcpu) = {
 	[EXIT_REASON_BUS_LOCK]                = handle_bus_lock_vmexit,
 	[EXIT_REASON_NOTIFY]		      = handle_notify,
 	[EXIT_REASON_GETSEC]                  = handle_getsec,
+	[EXIT_REASON_SEAMCALL]				  = handle_seamcall,
 };
 
 static const int kvm_vmx_max_exit_handlers =
@@ -7672,6 +7673,8 @@ static int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 			   __pa(&vmx->pi_desc) | PID_TABLE_ENTRY_VALID);
 
 	vmx->authenticated_code_execution_mode = false;
+	vmx->seam_mode = false;
+	vmx->in_pseamldr = false;
 
 	return 0;
 
