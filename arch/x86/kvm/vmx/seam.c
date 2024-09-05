@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*  Copyright(c) 2021 Intel Corporation. */
 
+#include "asm/msr-index.h"
 #include "kvm_cache_regs.h"
 
 #include "vmx.h"
@@ -153,11 +154,18 @@ static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     vmcs_write(GUEST_TR_LIMIT, vmcs_read32(GUEST_TR_LIMIT));
     vmcs_write(GUEST_TR_BASE, vmcs_readl(GUEST_TR_BASE));
 
+    vmcs_write(GUEST_GDTR_BASE, vmcs_readl(GUEST_GDTR_BASE));
+    vmcs_write(GUEST_GDTR_LIMIT, vmcs_read32(GUEST_GDTR_LIMIT));
+
+    vmcs_write(GUEST_IDTR_BASE, vmcs_readl(GUEST_IDTR_BASE));
+    vmcs_write(GUEST_IDTR_LIMIT, vmcs_read32(GUEST_IDTR_LIMIT));
+
     /* 28.3.3 Saving RIP, RSP, RFLAGS, and SSP */
 
     vmcs_write(GUEST_RSP, vmcs_readl(GUEST_RSP));
     vmcs_write(GUEST_RIP, vmcs_readl(GUEST_RIP));
     vmcs_write(GUEST_RFLAGS, vmcs_readl(GUEST_RFLAGS));
+// TODO: Saving SSP
 // TODO: handling Resume Flag?
 
     /* 28.3.4 Saving Non-Register State */
@@ -173,6 +181,154 @@ static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 
 static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
+#define ONLY_DEFINES
+#include "vmx_vmcs.h"
+    u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
+
+    unsigned long cr0, cr3, cr4;
+    u64 efer;
+    struct kvm_segment cs, ss, ds, es, fs, gs, tr;
+    struct kvm_segment ldtr;
+    struct desc_ptr gdtr, idtr;
+    unsigned long rip, rsp, rflags;
+
+    cr0 = vmcs_read(HOST_CR0);
+    cr3 = vmcs_read(HOST_CR3);
+    cr4 = vmcs_read(HOST_CR4);
+
+    /* 28.5 Loading Host State */
+
+    /* 28.5.1 Loading Host Control Registers, Debug Registers, MSRs */
+
+// TODO: Check CR0, CR3, CR4
+    kvm_set_cr0(vcpu, cr0);
+    kvm_set_cr3(vcpu, cr3);
+
+    if (exit_ctls & VM_EXIT_HOST_ADDR_SPACE_SIZE)
+        cr4 |= X86_CR4_PAE;
+    else
+        cr4 &= ~X86_CR4_PCIDE;
+    kvm_set_cr4(vcpu, cr4);
+
+    kvm_set_dr(vcpu, 7, 0x400);
+// TODO: Handle clear UINV
+
+    kvm_set_msr(vcpu, MSR_IA32_DEBUGCTLMSR, 0x0);
+    kvm_set_msr(vcpu, MSR_IA32_SYSENTER_CS, vmcs_read(HOST_IA32_SYSENTER_CS));
+    kvm_set_msr(vcpu, MSR_IA32_SYSENTER_ESP, vmcs_read(HOST_IA32_SYSENTER_ESP));
+    kvm_set_msr(vcpu, MSR_IA32_SYSENTER_EIP, vmcs_read(HOST_IA32_SYSENTER_EIP));
+
+#ifdef CONFIG_X86_64
+    kvm_set_msr(vcpu, MSR_FS_BASE, vmcs_read(HOST_FS_BASE));
+    kvm_set_msr(vcpu, MSR_GS_BASE, vmcs_read(HOST_GS_BASE));
+#endif
+
+    if (exit_ctls & VM_EXIT_LOAD_IA32_EFER) {
+        efer = vmcs_read(HOST_IA32_EFER_FULL);
+        efer &= (exit_ctls & VM_EXIT_HOST_ADDR_SPACE_SIZE) ? -1ULL : ~(EFER_LMA | EFER_LME);
+
+        kvm_set_msr(vcpu, MSR_EFER, efer);
+    }
+    if (exit_ctls & VM_EXIT_LOAD_IA32_PAT)
+        kvm_set_msr(vcpu, MSR_IA32_CR_PAT, vmcs_read(HOST_IA32_PAT_FULL));
+// TODO: IA32_PERF_GLOBAL_CTL
+// TODO: IA32_BNDCFGS
+    if (exit_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL)
+        kvm_set_msr(vcpu, MSR_IA32_RTIT_CTL, 0x0);
+// TODO: IA32_S_CET
+// TODO: IA32_PKRS
+
+    /* 28.5.2 Loading Host Segment and Descriptor-Table Registers */
+
+    cs.base = 0;
+    cs.limit = 0xFFFFFFFF;
+    cs.type = 0xB;
+    cs.s = 1;
+    cs.dpl = 0;
+    cs.present = 1;
+
+    if (exit_ctls & VM_EXIT_HOST_ADDR_SPACE_SIZE) {
+        cs.l = 1;
+        cs.db = 0;
+    } else
+        cs.db = 1;
+    cs.g = 1;
+
+    ss.base = ds.base = es.base = 0;
+    fs.base = vmcs_read(HOST_FS_BASE);
+    gs.base = vmcs_read(HOST_GS_BASE);
+    tr.base = vmcs_read(HOST_TR_BASE);
+
+    ss.limit = ds.limit = es.limit = fs.limit = gs.limit = 0xFFFFFFFF;
+    tr.limit = 0x67;
+    ss.type = ds.type = es.type = fs.type = gs.type = 0x3;
+    ss.s = ds.s = es.s = fs.s = gs.s = 1;
+    tr.type = 0xb;
+    tr.s = 0;
+
+    ss.dpl = tr.dpl = 0;
+    ds.dpl = es.dpl = fs.dpl = gs.dpl = 0;
+
+    tr.present = 1;
+    ss.present = ds.present = es.present = fs.present = gs.present = 1;
+
+    ss.db = 1;
+    ds.db = es.db = fs.db = gs.db = 1;
+    tr.db = 0;
+
+    ss.g = ds.g = es.g = fs.g = gs.g = 1;
+    tr.g = 0;
+
+    cs.selector = vmcs_read(HOST_CS_SELECTOR);
+    ss.selector = vmcs_read(HOST_SS_SELECTOR);
+    ds.selector = vmcs_read(HOST_DS_SELECTOR);
+    es.selector = vmcs_read(HOST_ES_SELECTOR);
+    fs.selector = vmcs_read(HOST_FS_SELECTOR);
+    gs.selector = vmcs_read(HOST_GS_SELECTOR);
+    tr.selector = vmcs_read(HOST_TR_SELECTOR);
+
+    __vmx_set_segment(vcpu, &cs, VCPU_SREG_CS);
+    __vmx_set_segment(vcpu, &ss, VCPU_SREG_SS);
+    __vmx_set_segment(vcpu, &ds, VCPU_SREG_DS);
+    __vmx_set_segment(vcpu, &es, VCPU_SREG_ES);
+    __vmx_set_segment(vcpu, &fs, VCPU_SREG_FS);
+    __vmx_set_segment(vcpu, &gs, VCPU_SREG_GS);
+    __vmx_set_segment(vcpu, &tr, VCPU_SREG_TR);
+
+    ldtr.selector = 0;
+    ldtr.unusable = 1;
+    __vmx_set_segment(vcpu, &ldtr, VCPU_SREG_LDTR);
+
+    gdtr.address = vmcs_read(HOST_GDTR_BASE);
+    gdtr.size = 0xFFFF;
+
+    idtr.address = vmcs_read(HOST_IDTR_BASE);
+    idtr.size = 0xFFFF;
+
+    vmx_set_gdt(vcpu, &gdtr);
+    vmx_set_idt(vcpu, &idtr);
+
+    /* 28.5.3 Loading Host RIP, RSP, RFLAGS, and SSP */
+    rip = vmcs_read(HOST_RIP);
+    rsp = vmcs_read(HOST_RSP);
+    rflags = X86_EFLAGS_FIXED;
+
+    kvm_rip_write(vcpu, rip);
+    kvm_rsp_write(vcpu, rsp);
+    kvm_set_rflags(vcpu, rflags);
+// TODO: Saving SSP
+
+    /* 28.5.4 Checking and Loading Host Page-Directory-Pointer-Table Entries */
+    // NOTE: PAE paging is not supported
+
+    /* 28.5.5 Updating Non-Register State */
+    // TODO
+
+    /* 28.5.6 Clearning Address-Range Monitoring */
+    // TODO
+
+    /* 28.6 Loading MSRs */
+    // NOTE: MSR loading is not supported by SEAM VMCS
 }
 
 int handle_seamcall(struct kvm_vcpu *vcpu)
