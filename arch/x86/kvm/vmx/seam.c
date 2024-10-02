@@ -213,28 +213,28 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     kvm_set_dr(vcpu, 7, 0x400);
 // TODO: Handle clear UINV
 
-    kvm_set_msr(vcpu, MSR_IA32_DEBUGCTLMSR, 0x0);
-    kvm_set_msr(vcpu, MSR_IA32_SYSENTER_CS, vmcs_read(HOST_IA32_SYSENTER_CS));
-    kvm_set_msr(vcpu, MSR_IA32_SYSENTER_ESP, vmcs_read(HOST_IA32_SYSENTER_ESP));
-    kvm_set_msr(vcpu, MSR_IA32_SYSENTER_EIP, vmcs_read(HOST_IA32_SYSENTER_EIP));
+    kvm_emulate_msr_write(vcpu, MSR_IA32_DEBUGCTLMSR, 0x0);
+    kvm_emulate_msr_write(vcpu, MSR_IA32_SYSENTER_CS, vmcs_read(HOST_IA32_SYSENTER_CS));
+    kvm_emulate_msr_write(vcpu, MSR_IA32_SYSENTER_ESP, vmcs_read(HOST_IA32_SYSENTER_ESP));
+    kvm_emulate_msr_write(vcpu, MSR_IA32_SYSENTER_EIP, vmcs_read(HOST_IA32_SYSENTER_EIP));
 
 #ifdef CONFIG_X86_64
-    kvm_set_msr(vcpu, MSR_FS_BASE, vmcs_read(HOST_FS_BASE));
-    kvm_set_msr(vcpu, MSR_GS_BASE, vmcs_read(HOST_GS_BASE));
+    kvm_emulate_msr_write(vcpu, MSR_FS_BASE, vmcs_read(HOST_FS_BASE));
+    kvm_emulate_msr_write(vcpu, MSR_GS_BASE, vmcs_read(HOST_GS_BASE));
 #endif
 
     if (exit_ctls & VM_EXIT_LOAD_IA32_EFER) {
         efer = vmcs_read(HOST_IA32_EFER_FULL);
         efer &= (exit_ctls & VM_EXIT_HOST_ADDR_SPACE_SIZE) ? -1ULL : ~(EFER_LMA | EFER_LME);
 
-        kvm_set_msr(vcpu, MSR_EFER, efer);
+        kvm_emulate_msr_write(vcpu, MSR_EFER, efer);
     }
     if (exit_ctls & VM_EXIT_LOAD_IA32_PAT)
-        kvm_set_msr(vcpu, MSR_IA32_CR_PAT, vmcs_read(HOST_IA32_PAT_FULL));
+        kvm_emulate_msr_write(vcpu, MSR_IA32_CR_PAT, vmcs_read(HOST_IA32_PAT_FULL));
 // TODO: IA32_PERF_GLOBAL_CTL
 // TODO: IA32_BNDCFGS
     if (exit_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL)
-        kvm_set_msr(vcpu, MSR_IA32_RTIT_CTL, 0x0);
+        kvm_emulate_msr_write(vcpu, MSR_IA32_RTIT_CTL, 0x0);
 // TODO: IA32_S_CET
 // TODO: IA32_PKRS
 
@@ -344,7 +344,7 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
 
     void *vmcs = page_address(vmcs_page);
 
-    kvm_get_msr(vcpu, MSR_EFER, &efer);
+    kvm_emulate_msr_read(vcpu, MSR_EFER, &efer);
     vmx_get_segment(vcpu, &cs, VCPU_SREG_CS);
 
     eax = 0xb;
