@@ -66,7 +66,7 @@ struct msr_seam_extend {
 
 #define vmcs_read(field) \
     *((u64 *) ((u8 *) (vmcs + VMX_##field##_OFFSET))) & \
-        (VMX_##field##_SIZE == 8 ? -1ULL : ((1ULL << VMX_##field##_SIZE) - 1))
+        (VMX_##field##_SIZE == 8 ? -1ULL : ((1ULL << (8 * VMX_##field##_SIZE)) - 1))
 #define vmcs_write(field, value) \
     switch(VMX_##field##_SIZE) { \
     case 1: \

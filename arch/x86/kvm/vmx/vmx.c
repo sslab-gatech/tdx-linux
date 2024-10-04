@@ -7692,6 +7692,8 @@ free_vpid:
 
 static int vmx_vm_init(struct kvm *kvm)
 {
+	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
+
 	if (!ple_gap)
 		kvm->arch.pause_in_guest = true;
 
@@ -7718,6 +7720,9 @@ static int vmx_vm_init(struct kvm *kvm)
 			break;
 		}
 	}
+
+	mutex_init(&kvm_vmx->p_seamldr_lock);
+
 	return 0;
 }
 

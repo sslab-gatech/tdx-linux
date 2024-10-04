@@ -80,7 +80,6 @@ static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
 #define ONLY_DEFINES
 #include "vmx_vmcs.h"
-    u32 entry_ctls = vmcs_read(VM_ENTRY_CONTROL);
     u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
 
     /* 28.3 Saving Guest State */
@@ -104,9 +103,9 @@ static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (exit_ctls & VM_EXIT_SAVE_IA32_EFER)
         vmcs_write(GUEST_IA32_EFER_FULL, vmcs_read64(GUEST_IA32_EFER));
 // TODO: IA32_BNDCFGS
-    if ((entry_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL) || (exit_ctls & VM_EXIT_CLEAR_IA32_RTIT_CTL))
-        vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
-// TODO: IA32_S_CET
+    vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
+    vmcs_write(GUEST_IA32_S_CET, vmcs_readl(GUEST_S_CET));
+    vmcs_write(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR, vmcs_readl(GUEST_INTR_SSP_TABLE));
 // TODO: IA32_LBR_CTL
 // TODO: IA32_PKRS
 // TODO: User interrupts
@@ -165,13 +164,13 @@ static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     vmcs_write(GUEST_RSP, vmcs_readl(GUEST_RSP));
     vmcs_write(GUEST_RIP, vmcs_readl(GUEST_RIP));
     vmcs_write(GUEST_RFLAGS, vmcs_readl(GUEST_RFLAGS));
-// TODO: Saving SSP
+    vmcs_write(GUEST_SSP, vmcs_readl(GUEST_SSP));
 // TODO: handling Resume Flag?
 
     /* 28.3.4 Saving Non-Register State */
     vmcs_write(GUEST_SLEEP_STATE, vmcs_read32(GUEST_ACTIVITY_STATE));
     vmcs_write(GUEST_INTERRUPTIBILITY, vmcs_read32(GUEST_INTERRUPTIBILITY_INFO)); // TODO
-    vmcs_write(GUEST_PND_DEBUG_EXCEPTION, vmcs_read32(GUEST_PENDING_DBG_EXCEPTIONS)); // TODO
+    vmcs_write(GUEST_PND_DEBUG_EXCEPTION, vmcs_readl(GUEST_PENDING_DBG_EXCEPTIONS)); // TODO
 // TODO: VMX-preemption timer value
 // NOTE: EPT is not used for SEAM VMCS
 
@@ -191,6 +190,7 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     struct kvm_segment ldtr;
     struct desc_ptr gdtr, idtr;
     unsigned long rip, rsp, rflags;
+    u32 instr_len; 
 
     cr0 = vmcs_read(HOST_CR0);
     cr3 = vmcs_read(HOST_CR3);
@@ -233,8 +233,12 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
         kvm_emulate_msr_write(vcpu, MSR_IA32_CR_PAT, vmcs_read(HOST_IA32_PAT_FULL));
 // TODO: IA32_PERF_GLOBAL_CTL
 // TODO: IA32_BNDCFGS
-    if (exit_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL)
+    if (exit_ctls & VM_EXIT_CLEAR_IA32_RTIT_CTL)
         kvm_emulate_msr_write(vcpu, MSR_IA32_RTIT_CTL, 0x0);
+    if (exit_ctls & VM_EXIT_LOAD_CET_STATE) {
+        kvm_emulate_msr_write(vcpu, MSR_IA32_S_CET, vmcs_read(HOST_IA32_S_CET));
+        kvm_emulate_msr_write(vcpu, MSR_IA32_INT_SSP_TAB, vmcs_read(HOST_IA32_INTERRUPT_SSP_TABLE_ADDR));
+    }
 // TODO: IA32_S_CET
 // TODO: IA32_PKRS
 
@@ -313,10 +317,11 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     rsp = vmcs_read(HOST_RSP);
     rflags = X86_EFLAGS_FIXED;
 
-    kvm_rip_write(vcpu, rip);
+    instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
+    kvm_rip_write(vcpu, rip - instr_len);
     kvm_rsp_write(vcpu, rsp);
     kvm_set_rflags(vcpu, rflags);
-// TODO: Saving SSP
+    vmcs_writel(GUEST_SSP, vmcs_read(HOST_SSP));
 
     /* 28.5.4 Checking and Loading Host Page-Directory-Pointer-Table Entries */
     // NOTE: PAE paging is not supported
@@ -334,6 +339,8 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 int handle_seamcall(struct kvm_vcpu *vcpu)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+
     u64 efer, seam_cvp, rax, rflags;
     u32 eax, ebx, ecx, edx;
     struct kvm_segment cs;
@@ -370,15 +377,23 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
 
 #define INVOKE_PSEAMLDR (1ULL << 63)
     if (rax & INVOKE_PSEAMLDR) {
-// TODO: Acquire P_SEAMLDR_MUTEX
+        if (!mutex_trylock(&kvm_vmx->p_seamldr_lock)) {
+            kvm_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
+            goto exit;
+        } else if (vmx->in_pseamldr) {
+            mutex_unlock(&kvm_vmx->p_seamldr_lock);
+            // TODO: What happens if in_pseamldr already set
+            goto exit;
+        } else if (false) {
 // TODO: Check P_SEAMLDR is loaded and enabled
-        kvm_set_rflags(vcpu, X86_EFLAGS_CF);
-        goto exit;
-
+            kvm_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
+            goto exit;
+        }
+        seam_cvp = vmx->seamrr.base + vmx->seamrr.size - P_SEAMLDR_RANGE_SIZE + PAGE_SIZE;
         vmx->in_pseamldr = true;
     } else {
 // TODO: Check TDX Module is loaded
-        kvm_set_rflags(vcpu, X86_EFLAGS_CF);
+        kvm_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
         goto exit;
     }
 
