@@ -114,7 +114,7 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
     if (kvm_emulate_msr_write(vcpu, MSR_IA32_MISC_ENABLE, 0))
         goto err;
 
-    kvm_set_rflags(vcpu, 0x2);
+    vmx_set_rflags(vcpu, 0x2);
 
     eip = kvm_rip_read(vcpu);
     instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
@@ -241,7 +241,7 @@ static void dump_post_enteraccs(struct kvm_vcpu *vcpu)
 
     cr0 = kvm_read_cr0(vcpu);
     cr4 = kvm_read_cr4(vcpu);
-    eflags = kvm_get_rflags(vcpu);
+    eflags = vmx_get_rflags(vcpu);
     eip = kvm_rip_read(vcpu);
     ebp = kvm_rbp_read(vcpu);
     ebx = kvm_rbx_read(vcpu);

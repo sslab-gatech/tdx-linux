@@ -89,5 +89,6 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
 void handle_seam_extend(struct kvm_vcpu *vcpu);
 
 int handle_seamcall(struct kvm_vcpu *vcpu);
+__init int seam_vmx_hardware_setup(int (*exit_handlers[])(struct kvm_vcpu *));
 
 #endif

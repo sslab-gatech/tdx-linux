@@ -320,7 +320,7 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
     kvm_rip_write(vcpu, rip - instr_len);
     kvm_rsp_write(vcpu, rsp);
-    kvm_set_rflags(vcpu, rflags);
+    vmx_set_rflags(vcpu, rflags);
     vmcs_writel(GUEST_SSP, vmcs_read(HOST_SSP));
 
     /* 28.5.4 Checking and Loading Host Page-Directory-Pointer-Table Entries */
@@ -334,6 +334,15 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     /* 28.6 Loading MSRs */
     // NOTE: MSR loading is not supported by SEAM VMCS
+}
+
+static int vmx_fail_invalid(struct kvm_vcpu *vcpu)
+{
+	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
+			& ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF |
+			    X86_EFLAGS_SF | X86_EFLAGS_OF))
+			| X86_EFLAGS_CF);
+	return kvm_skip_emulated_instruction(vcpu);
 }
 
 int handle_seamcall(struct kvm_vcpu *vcpu)
@@ -378,27 +387,25 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
 #define INVOKE_PSEAMLDR (1ULL << 63)
     if (rax & INVOKE_PSEAMLDR) {
         if (!mutex_trylock(&kvm_vmx->p_seamldr_lock)) {
-            kvm_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
-            goto exit;
+            return vmx_fail_invalid(vcpu);
         } else if (vmx->in_pseamldr) {
             mutex_unlock(&kvm_vmx->p_seamldr_lock);
             // TODO: What happens if in_pseamldr already set
             goto exit;
         } else if (false) {
 // TODO: Check P_SEAMLDR is loaded and enabled
-            kvm_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
-            goto exit;
+            return vmx_fail_invalid(vcpu);
         }
         seam_cvp = vmx->seamrr.base + vmx->seamrr.size - P_SEAMLDR_RANGE_SIZE + PAGE_SIZE;
         vmx->in_pseamldr = true;
     } else {
 // TODO: Check TDX Module is loaded
-        kvm_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
+        vmx_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
         goto exit;
     }
 
-    rflags = kvm_get_rflags(vcpu);
-    kvm_set_rflags(vcpu, rflags & 
+    rflags = vmx_get_rflags(vcpu);
+    vmx_set_rflags(vcpu, rflags & 
         ~(X86_EFLAGS_CF | X86_EFLAGS_OF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF));
 
     vmx->seam_mode = true;
@@ -419,3 +426,30 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
 exit:
     return kvm_complete_insn_gp(vcpu, 0);
 }
+
+static struct nested_vmx_instruction_handlers {
+    int (*vmread)(struct kvm_vcpu *);
+    int (*vmwrite)(struct kvm_vcpu *);
+} vmx_instruction_handlers;
+
+static int handle_vmread(struct kvm_vcpu* vcpu)
+{
+    return vmx_instruction_handlers.vmread(vcpu);
+}
+
+static int handle_vmwrite(struct kvm_vcpu* vcpu)
+{
+    return vmx_instruction_handlers.vmwrite(vcpu);
+}
+
+__init int seam_vmx_hardware_setup(int (*exit_handler[])(struct kvm_vcpu *))
+{
+    vmx_instruction_handlers.vmread = exit_handler[EXIT_REASON_VMREAD];
+    vmx_instruction_handlers.vmwrite = exit_handler[EXIT_REASON_VMWRITE];
+
+    exit_handler[EXIT_REASON_VMREAD] = handle_vmread;
+    exit_handler[EXIT_REASON_VMWRITE] = handle_vmwrite;
+
+    return 0;
+} 
+

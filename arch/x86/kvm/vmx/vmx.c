@@ -8849,6 +8849,19 @@ static __init int hardware_setup(void)
 			return r;
 	}
 
+	if (open_tdx) {
+		if (!nested) {
+			printk(KERN_WARNING "%s: cannot enable open_tdx without nested"
+					"virtualization\n", __func__);
+
+			return -EINVAL;
+		}
+
+		r = seam_vmx_hardware_setup(kvm_vmx_exit_handlers);
+		if (r)
+			return r;
+	}
+
 	vmx_set_cpu_caps();
 
 	r = alloc_kvm_area();
