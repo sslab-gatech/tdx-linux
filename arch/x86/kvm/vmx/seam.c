@@ -318,6 +318,7 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
     kvm_rip_write(vcpu, rip - instr_len);
     kvm_rsp_write(vcpu, rsp);
+    // TODO: single-step debugging should set Trap flag
     vmx_set_rflags(vcpu, rflags);
     vmcs_writel(GUEST_SSP, vmcs_read(HOST_SSP));
 
@@ -357,7 +358,7 @@ static void save_exit_info(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     /* 28.2.5 Information for VM Exits due to instruction execution */
 
-    // VM-exit instruction length
+    vmcs_write(VM_EXIT_INSTRUCTION_LENGTH, vmcs_read32(VM_EXIT_INSTRUCTION_LEN));
     // VM-exit instruction information
     // IO-RCX, IO-RSI, IO-RDI, IO-RIP
 }
@@ -471,13 +472,18 @@ static struct nested_vmx_instruction_handlers {
     int (*vmwrite)(struct kvm_vcpu *);
 } vmx_instruction_handlers;
 
+/* TODO: if guest VM-root uses shadow VMCS, vmread will not be caught.
+ *       So, we should disable using shadow VMCS when running SEAMCALL.
+ *       Then, we should re-enable it when TDX-module creates TDs so that
+ *       vmread/vmwrite should be correctly forwarded to the VMCS of TDs.
+ */
 static int handle_vmread(struct kvm_vcpu* vcpu)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
     unsigned long exit_qualification;
     struct x86_exception e;
     u32 instr_info;
-    unsigned long field;
+    unsigned long encode;
     u64 value;
     gva_t gva = 0;
     int len, r;
@@ -491,7 +497,7 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
         exit_qualification = vmx_get_exit_qual(vcpu);
 
         instr_info = vmcs_read32(VMX_INSTRUCTION_INFO);
-        field = kvm_register_read(vcpu, (((instr_info) >> 28) & 0xf));
+        encode = kvm_register_read(vcpu, (((instr_info) >> 28) & 0xf));
 
 #define macro(field)                                                        \
     case VMX_##field##_ENCODE:                                              \
@@ -501,12 +507,13 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
     }                                                                       \
     break;
 
-        switch (field) {
+        switch (encode) {
 #include "vmx_vmcs_macro.h"
         default:
-        printk(KERN_WARNING "%s: unknown encoding 0x%0lx", __func__, field);
+        printk(KERN_WARNING "%s: unknown encoding 0x%0lx", __func__, encode);
         return vmx_fail_invalid(vcpu);
         }
+#undef macro
 
         if (instr_info & BIT(10)) {
             kvm_register_write(vcpu, (((instr_info) >> 3) & 0xf), value);
@@ -524,7 +531,7 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
         return vmx_succeed(vcpu);
 
 err:
-        printk(KERN_WARNING "%s: error while handling vmread\n",
+        printk(KERN_WARNING "%s: error while handling vmread",
                __func__);
         return 1;
     } else {
@@ -534,7 +541,64 @@ err:
 
 static int handle_vmwrite(struct kvm_vcpu* vcpu)
 {
-    return vmx_instruction_handlers.vmwrite(vcpu);
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    unsigned long exit_qualification;
+    struct x86_exception e;
+    u32 instr_info;
+    unsigned long encode;
+    u64 value;
+    gva_t gva = 0;
+    int len, r;
+
+    if (vmx->seam_mode) {
+        if (is_guest_mode(vcpu)) {
+            printk(KERN_WARNING "[TODO] support vmwrite in L2");
+            return vmx_fail_invalid(vcpu);
+        }
+
+        exit_qualification = vmx_get_exit_qual(vcpu);
+
+        instr_info = vmcs_read32(VMX_INSTRUCTION_INFO);
+
+        if (instr_info & BIT(10)) {
+            value = kvm_register_read(vcpu, (((instr_info) >> 3) & 0xf));
+        } else {
+            len = is_64_bit_mode(vcpu) ? 8 : 4;
+            if (get_vmx_mem_address(vcpu, exit_qualification,
+                    instr_info, false, len, &gva))
+                return 1;
+            r = kvm_read_guest_virt(vcpu, gva, &value, len, &e);
+            if (r != X86EMUL_CONTINUE)
+                return kvm_handle_memory_failure(vcpu, r, &e);
+        }
+
+        encode = kvm_register_read(vcpu, (((instr_info) >> 28) & 0xf));
+
+#define macro(field)                                                        \
+    case VMX_##field##_ENCODE:                                              \
+    if (kvm_write_guest(vcpu->kvm, vmx->seam_vmptr + VMX_##field##_OFFSET,  \
+                        &value, VMX_##field##_SIZE)) {                      \
+        goto err;                                                           \
+    }                                                                       \
+    break;
+
+        switch (encode) {
+#include "vmx_vmcs_macro.h"
+        default:
+        printk(KERN_WARNING "%s: unknown encoding 0x%0lx", __func__, encode);
+        return vmx_fail_invalid(vcpu);
+        }
+#undef macro
+
+        return vmx_succeed(vcpu);
+
+err:
+        printk(KERN_WARNING "%s: error while handling vmwrite",
+               __func__);
+        return 1;
+    } else {
+        return vmx_instruction_handlers.vmwrite(vcpu);
+    }
 }
 
 __init int seam_vmx_hardware_setup(int (*exit_handler[])(struct kvm_vcpu *))
