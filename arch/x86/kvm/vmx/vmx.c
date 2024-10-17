@@ -7674,6 +7674,7 @@ static int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 
 	vmx->authenticated_code_execution_mode = false;
 	vmx->seam_mode = false;
+	vmx->seam_vmptr = INVALID_GPA;
 	vmx->in_pseamldr = false;
 
 	return 0;

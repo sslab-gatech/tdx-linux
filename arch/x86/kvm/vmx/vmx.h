@@ -373,6 +373,7 @@ struct vcpu_vmx {
 
 	bool authenticated_code_execution_mode;
 	bool seam_mode;
+	u64 seam_vmptr;
 	bool in_pseamldr;
 	u64 msr_ia32_bios_se_svn;
 	u64 msr_ia32_bios_done;

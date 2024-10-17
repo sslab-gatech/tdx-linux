@@ -8,6 +8,8 @@
 #include "seam.h"
 #include "nested.h"
 
+#include "vmx_vmcs.h"
+
 #include <asm/asm.h>
 
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
@@ -76,10 +78,8 @@ void handle_seam_extend(struct kvm_vcpu *vcpu)
     vmx->seam_extend.valid = 1;
 }
 
-static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
+static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
-#define ONLY_DEFINES
-#include "vmx_vmcs.h"
     u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
 
     /* 28.3 Saving Guest State */
@@ -178,10 +178,8 @@ static void save_vmm_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     // NOTE: MSR Saving is not used for SEAM VMCS
 }
 
-static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
+static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
-#define ONLY_DEFINES
-#include "vmx_vmcs.h"
     u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
 
     unsigned long cr0, cr3, cr4;
@@ -336,6 +334,42 @@ static void load_seam_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     // NOTE: MSR loading is not supported by SEAM VMCS
 }
 
+static void save_exit_info(struct kvm_vcpu *vcpu, u8 *vmcs)
+{
+
+    /* 28.2 Recording VM-Exit information and updating VM-Entry control fields */
+
+    /* 28.2.1 Basic VM-Exit Information */
+    vmcs_write(VM_EXIT_REASON, vmcs_read32(VM_EXIT_REASON));
+    vmcs_write(VM_EXIT_QUALIFICATION, vmcs_readl(EXIT_QUALIFICATION));
+
+    // Guest linear address
+    // Guest physical address
+
+    /* 28.2.2 Information for VM Exits due to vectored events */
+
+    // VM-exit interruption information
+    // VM-exit interruption error code
+
+    /* 28.2.3 Information about NMI unblocking due to IRET */
+
+    /* 28.2.4 Information for VM Exits during event delivery */
+
+    /* 28.2.5 Information for VM Exits due to instruction execution */
+
+    // VM-exit instruction length
+    // VM-exit instruction information
+    // IO-RCX, IO-RSI, IO-RDI, IO-RIP
+}
+
+static int vmx_succeed(struct kvm_vcpu *vcpu)
+{
+	vmx_set_rflags(vcpu, vmx_get_rflags(vcpu)
+			& ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF |
+			    X86_EFLAGS_SF | X86_EFLAGS_OF));
+	return kvm_skip_emulated_instruction(vcpu);
+}
+
 static int vmx_fail_invalid(struct kvm_vcpu *vcpu)
 {
 	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
@@ -408,22 +442,27 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     vmx_set_rflags(vcpu, rflags & 
         ~(X86_EFLAGS_CF | X86_EFLAGS_OF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF));
 
-    vmx->seam_mode = true;
-
     if (vmx->nested.current_vmptr != INVALID_GPA)
-        printk(KERN_WARNING "%s: Do not support current-VMCS on SEAMCALL\n", 
+        printk(KERN_WARNING "%s: do not support current-VMCS on SEAMCALL\n", 
                __func__);
 
-    kvm_read_guest_page(vcpu->kvm, gpa_to_gfn(seam_cvp), vmcs, 0, PAGE_SIZE);
+    // TODO: nested.current_vmptr should be released here
+    vmx->seam_mode = true;
+    vmx->seam_vmptr = seam_cvp;
+
+    kvm_read_guest_page(vcpu->kvm, gpa_to_gfn(vmx->seam_vmptr), vmcs, 0, PAGE_SIZE);
 
 // TODO: Save event inhibits in VMM interruptability status
 // TODO: Inhibit SMI and NMI
-    save_vmm_state(vcpu, (u8 *) vmcs);
-    load_seam_state(vcpu, (u8 *) vmcs);
+    save_exit_info(vcpu, (u8 *) vmcs);
+    save_guest_state(vcpu, (u8 *) vmcs);
+    load_host_state(vcpu, (u8 *) vmcs);
 
-    kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(seam_cvp), vmcs, 0, PAGE_SIZE);
+    kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(vmx->seam_vmptr), vmcs, 0, PAGE_SIZE);
 
 exit:
+    free_page((unsigned long) vmcs);
+
     return kvm_complete_insn_gp(vcpu, 0);
 }
 
@@ -434,7 +473,63 @@ static struct nested_vmx_instruction_handlers {
 
 static int handle_vmread(struct kvm_vcpu* vcpu)
 {
-    return vmx_instruction_handlers.vmread(vcpu);
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    unsigned long exit_qualification;
+    struct x86_exception e;
+    u32 instr_info;
+    unsigned long field;
+    u64 value;
+    gva_t gva = 0;
+    int len, r;
+
+    if (vmx->seam_mode) {
+        if (is_guest_mode(vcpu)) {
+            printk(KERN_WARNING "[TODO] support vmread in L2");
+            return vmx_fail_invalid(vcpu);
+        }
+
+        exit_qualification = vmx_get_exit_qual(vcpu);
+
+        instr_info = vmcs_read32(VMX_INSTRUCTION_INFO);
+        field = kvm_register_read(vcpu, (((instr_info) >> 28) & 0xf));
+
+#define macro(field)                                                        \
+    case VMX_##field##_ENCODE:                                              \
+    if (kvm_read_guest(vcpu->kvm, vmx->seam_vmptr + VMX_##field##_OFFSET,   \
+                       &value, VMX_##field##_SIZE)) {                       \
+        goto err;                                                           \
+    }                                                                       \
+    break;
+
+        switch (field) {
+#include "vmx_vmcs_macro.h"
+        default:
+        printk(KERN_WARNING "%s: unknown encoding 0x%0lx", __func__, field);
+        return vmx_fail_invalid(vcpu);
+        }
+
+        if (instr_info & BIT(10)) {
+            kvm_register_write(vcpu, (((instr_info) >> 3) & 0xf), value);
+        } else {
+            len = is_64_bit_mode(vcpu) ? 8 : 4;
+            if (get_vmx_mem_address(vcpu, exit_qualification, 
+                    instr_info, true, len, &gva))
+                return 1;
+
+            r = kvm_write_guest_virt_system(vcpu, gva, &value, len, &e);
+            if (r != X86EMUL_CONTINUE)
+                return kvm_handle_memory_failure(vcpu, r, &e);
+        }
+
+        return vmx_succeed(vcpu);
+
+err:
+        printk(KERN_WARNING "%s: error while handling vmread\n",
+               __func__);
+        return 1;
+    } else {
+        return vmx_instruction_handlers.vmread(vcpu);
+    }
 }
 
 static int handle_vmwrite(struct kvm_vcpu* vcpu)
