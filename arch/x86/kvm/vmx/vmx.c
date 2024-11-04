@@ -7974,8 +7974,11 @@ static __init void vmx_set_cpu_caps(void)
 	/* CPUID 0x1 */
 	if (nested)
 		kvm_cpu_cap_set(X86_FEATURE_VMX);
-	if (open_tdx)
+	if (open_tdx) {
+		kvm_cpu_cap_set(X86_FEATURE_TME);
+		kvm_cpu_cap_set(X86_FEATURE_PCONFIG);
 		kvm_cpu_cap_set(X86_FEATURE_SMX);
+	}
 
 	/* CPUID 0x7 */
 	if (kvm_mpx_supported())
