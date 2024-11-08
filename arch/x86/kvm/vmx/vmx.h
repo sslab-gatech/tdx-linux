@@ -18,6 +18,7 @@
 
 #include "smx.h"
 #include "seam.h"
+#include "mktme.h"
 
 #define MSR_TYPE_R	1
 #define MSR_TYPE_W	2
@@ -392,6 +393,9 @@ struct kvm_vmx {
 	u64 *pid_table;
 
 	struct mutex p_seamldr_lock;
+
+	u64 msr_ia32_tme_capability;
+	u64 msr_ia32_tme_activate;
 };
 
 void vmx_vcpu_load_vmcs(struct kvm_vcpu *vcpu, int cpu,

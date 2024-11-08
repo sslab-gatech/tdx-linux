@@ -69,6 +69,7 @@
 #include "vmx_onhyperv.h"
 #include "smx.h"
 #include "seam.h"
+#include "mktme.h"
 
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
@@ -1995,6 +1996,7 @@ static int vmx_get_msr_feature(struct kvm_msr_entry *msr)
 static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
 	struct vmx_uret_msr *msr;
 	u32 index;
 
@@ -2167,6 +2169,16 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_SEAMEXTEND:
 		return 1;
+	case MSR_IA32_MKTME_KEYID_PARTITIONING:
+		msr_info->data = (num_tdx_keyids(kvm_vmx->msr_ia32_tme_activate) << 32) |
+			num_keyids(kvm_vmx->msr_ia32_tme_activate);
+		break;
+	case MSR_IA32_TME_CAPABILITY:
+		msr_info->data = kvm_vmx->msr_ia32_tme_capability;
+		break;
+	case MSR_IA32_TME_ACTIVATE:
+		msr_info->data = kvm_vmx->msr_ia32_tme_activate;
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);
@@ -2213,6 +2225,7 @@ static u64 vmx_get_supported_debugctl(struct kvm_vcpu *vcpu, bool host_initiated
 static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
 	struct vmx_uret_msr *msr;
 	int ret = 0;
 	u32 msr_index = msr_info->index;
@@ -2536,6 +2549,34 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_SEAMEXTEND:
 		handle_seam_extend(vcpu);
 		break;
+	case MSR_IA32_MKTME_KEYID_PARTITIONING:
+		return 1;
+	case MSR_IA32_TME_CAPABILITY:
+		return 1;
+	case MSR_IA32_TME_ACTIVATE:
+		if (tme_locked(kvm_vmx->msr_ia32_tme_activate))
+			return 1;
+		else if ((data & TME_ACT_RESERVED1) || (data & TME_ACT_RESERVED2))
+			return 1;
+
+		if (!((kvm_vmx->msr_ia32_tme_capability & 0x7) & enc_alg(data)))
+			return 1;
+
+		if (!((kvm_vmx->msr_ia32_tme_capability & 0x7) & mktme_enc_alg(data)))
+			return 1;
+
+		if (keyid_bits(data) > keyid_bits(kvm_vmx->msr_ia32_tme_capability) ||
+			(keyid_bits > 0 && !tme_enabled(data)))
+			return 1;
+		else if (tdx_keyid_bits(data) > keyid_bits(data))
+			return 1;
+
+		if (data & TME_ACT_KEY_SELECT) {
+			printk(KERN_WARNING "[opentdx] Does not support restoring mktme keys");
+		}
+
+		kvm_vmx->msr_ia32_tme_activate = data | TME_ACT_LOCKED;
+		return 1;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_index);
@@ -5472,6 +5513,8 @@ static __always_inline int handle_external_interrupt(struct kvm_vcpu *vcpu)
 
 static int handle_triple_fault(struct kvm_vcpu *vcpu)
 {
+	printk(KERN_WARNING "[opentdx] triple fault while running 0x%0lx\n", kvm_rip_read(vcpu));
+
 	vcpu->run->exit_reason = KVM_EXIT_SHUTDOWN;
 	vcpu->mmio_needed = 0;
 	return 0;
@@ -7725,6 +7768,10 @@ static int vmx_vm_init(struct kvm *kvm)
 	}
 
 	mutex_init(&kvm_vmx->p_seamldr_lock);
+	kvm_vmx->msr_ia32_tme_capability = (
+		(TME_CAP_AES_128 | TME_CAP_AES_128_INT | TME_CAP_AES_256) |
+		TME_CAP_BYPASS_SUPPORTED | TME_CAP_KEYID_BITS | TME_CAP_KEYID_NUM);
+	kvm_vmx->msr_ia32_tme_activate = 0;
 
 	return 0;
 }
