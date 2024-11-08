@@ -103,7 +103,8 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (exit_ctls & VM_EXIT_SAVE_IA32_EFER)
         vmcs_write(GUEST_IA32_EFER_FULL, vmcs_read64(GUEST_IA32_EFER));
 // TODO: IA32_BNDCFGS
-    vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
+    printk(KERN_WARNING "[opentdx] do not support setting GUEST_IA32_RTIT_CTL");
+    // vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
     vmcs_write(GUEST_IA32_S_CET, vmcs_readl(GUEST_S_CET));
     vmcs_write(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR, vmcs_readl(GUEST_INTR_SSP_TABLE));
 // TODO: IA32_LBR_CTL
@@ -187,7 +188,7 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     struct kvm_segment cs, ss, ds, es, fs, gs, tr;
     struct kvm_segment ldtr;
     struct desc_ptr gdtr, idtr;
-    unsigned long rip, rsp, rflags;
+    unsigned long rip, rsp;
     u32 instr_len; 
 
     cr0 = vmcs_read(HOST_CR0);
@@ -313,13 +314,12 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     /* 28.5.3 Loading Host RIP, RSP, RFLAGS, and SSP */
     rip = vmcs_read(HOST_RIP);
     rsp = vmcs_read(HOST_RSP);
-    rflags = X86_EFLAGS_FIXED;
+    // rflags = X86_EFLAGS_FIXED;
 
     instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
     kvm_rip_write(vcpu, rip - instr_len);
     kvm_rsp_write(vcpu, rsp);
-    // TODO: single-step debugging should set Trap flag
-    vmx_set_rflags(vcpu, rflags);
+    // vmx_set_rflags(vcpu, rflags);
     vmcs_writel(GUEST_SSP, vmcs_read(HOST_SSP));
 
     /* 28.5.4 Checking and Loading Host Page-Directory-Pointer-Table Entries */
@@ -440,6 +440,7 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     }
 
     rflags = vmx_get_rflags(vcpu);
+    // TODO: single-step debugging should set Trap flag
     vmx_set_rflags(vcpu, rflags & 
         ~(X86_EFLAGS_CF | X86_EFLAGS_OF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF));
 
