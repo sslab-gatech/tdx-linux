@@ -665,6 +665,7 @@ exit:
 int handle_seamret(struct kvm_vcpu *vcpu)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
     u64 efer;
     struct kvm_segment cs;
     int err = 0;
@@ -706,6 +707,14 @@ int handle_seamret(struct kvm_vcpu *vcpu)
             VMX_EXIT_REASONS_FAILED_VMENTRY | EXIT_REASON_INVALID_STATE);
         vmcs_write(VM_EXIT_QUALIFICATION, 0);
         goto exit;
+    }
+
+    vmx->seam_vmptr = INVALID_GPA;
+    vmx->seam_mode = false;
+
+    if (vmx->in_pseamldr) {
+        vmx->in_pseamldr = false;
+        mutex_unlock(&kvm_vmx->p_seamldr_lock);
     }
 
 exit:
