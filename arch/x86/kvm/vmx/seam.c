@@ -8,9 +8,8 @@
 #include "seam.h"
 #include "nested.h"
 
-#include "vmx_vmcs.h"
-
 #include <asm/asm.h>
+#include <asm/segment.h>
 
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 {
@@ -108,7 +107,7 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     vmcs_write(GUEST_IA32_S_CET, vmcs_readl(GUEST_S_CET));
     vmcs_write(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR, vmcs_readl(GUEST_INTR_SSP_TABLE));
 // TODO: IA32_LBR_CTL
-// TODO: IA32_PKRS
+// TODO: PKRS
 // TODO: User interrupts
 // TODO: IA32_PERF_GLOBAL_CTL
 
@@ -179,6 +178,186 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     // NOTE: MSR Saving is not used for SEAM VMCS
 }
 
+/*
+ * Loading guest state should first check all the guest-state fields are correct,
+ * and then, actually update the vcpu state. return 1 otherwise.
+ */
+static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
+{
+    u32 entry_ctls = vmcs_read(VM_ENTRY_CONTROL);
+
+    unsigned long cr0, cr4, cr3;
+    unsigned long s_cet, intr_ssp_table_addr;
+    struct kvm_segment cs, ss, ds, es, fs, gs, tr;
+    struct kvm_segment ldtr;
+    struct desc_ptr gdtr, idtr;
+    u64 efer, rflags;
+    // bool ia32e_mode_guest;
+
+    cr0 = vmcs_read(GUEST_CR0);
+    cr4 = vmcs_read(GUEST_CR4);
+    cr3 = vmcs_read(GUEST_CR3);
+
+    s_cet = vmcs_read(GUEST_IA32_S_CET);
+    intr_ssp_table_addr = vmcs_read(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR);
+
+    efer = vmcs_read(GUEST_IA32_EFER_FULL);
+
+    /* 27.3 Checking and loading guest state */
+
+    /* 27.3.1 Checks on the guest state area */
+    if ((cr0 & vmcs_config.nested.cr0_fixed0) != vmcs_config.nested.cr0_fixed0 ||
+        (cr0 | vmcs_config.nested.cr0_fixed1) != vmcs_config.nested.cr0_fixed1)
+        return 1;
+
+    if ((cr0 & X86_CR0_PG) && !(cr0 & X86_CR0_PE))
+        return 1;
+
+    if ((cr4 & vmcs_config.nested.cr4_fixed0) != vmcs_config.nested.cr4_fixed0 ||
+        (cr4 | vmcs_config.nested.cr4_fixed1) != vmcs_config.nested.cr4_fixed1)
+        return 1;
+
+    if ((cr4 & X86_CR4_CET) && !(cr0 & X86_CR0_WP))
+        return 1;
+
+    if (entry_ctls & VM_ENTRY_IA32E_MODE) {
+        if (!(cr0 & X86_CR0_PG) || !(cr4 & X86_CR4_PAE) || (cr4 & X86_CR4_PCIDE))
+            return 1;
+    }
+
+    if (cr3 & vcpu->arch.reserved_gpa_bits)
+        return 1;
+
+    if ((entry_ctls & VM_ENTRY_LOAD_CET_STATE) && (
+        is_noncanonical_address(s_cet, vcpu) ||
+        is_noncanonical_address(intr_ssp_table_addr, vcpu)))
+        return 1;
+
+// TODO: check IA32_PERF_GLOBAL_CTRL
+// TODO: check IA32_PAT
+
+    if (entry_ctls & VM_ENTRY_LOAD_IA32_EFER) {
+        // NOTE: seamret does not check it?
+        // ia32e_mode_guest = !!(entry_ctls & VM_ENTRY_IA32E_MODE);
+        // if (!!(efer & EFER_LMA) != ia32e_mode_guest)
+        //     return 1;
+
+        if ((cr0 & X86_CR0_PG) &&
+            (!!(efer & EFER_LMA) != !!(efer & EFER_LME)))
+            return 1;
+    }
+// TODO: IA32_BNDCFGS
+// TODO: IA32_RTIT_CTL
+
+    if ((entry_ctls & VM_ENTRY_LOAD_CET_STATE) &&
+        ((s_cet & CET_RESERVED) ||
+         ((s_cet & CET_SUPPRESS) && (s_cet & CET_WAIT_ENDBR))))
+        return 1;
+
+// TODO: PKRS
+// TODO: UINV
+
+    rflags = vmcs_read(GUEST_RFLAGS);
+
+    read_segment_CS(&cs, vmcs);
+    read_segment_SS(&ss, vmcs);
+    read_segment_DS(&ds, vmcs);
+    read_segment_ES(&es, vmcs);
+    read_segment_FS(&fs, vmcs);
+    read_segment_GS(&gs, vmcs);
+    read_segment_LDTR(&ldtr, vmcs);
+    read_segment_TR(&tr, vmcs);
+
+    gdtr.address = vmcs_read(GUEST_GDTR_BASE);
+    gdtr.size = vmcs_read(GUEST_GDTR_LIMIT);
+
+    idtr.address = vmcs_read(GUEST_IDTR_BASE);
+    idtr.size = vmcs_read(GUEST_IDTR_LIMIT);
+
+    if (rflags & X86_EFLAGS_VM) {
+        printk(KERN_WARNING "[opentdx] does not allow entering guest with virtual 8086 mode");
+        return 1;
+    }
+
+// Assumption, TDX module will not modify guest state
+// TODO: 27.3.1.2 Checks on Guest Segment Registers
+// TODO: 27.3.1.3 Checks on Guest Descriptor-Table Registers
+// TODO: 27.3.1.4 Checks on Guest RIP, RFLAGS, and SSP
+
+    /* 27.3.2 Loading Guest State */
+    kvm_set_cr0(vcpu, cr0);
+    kvm_set_cr3(vcpu, cr3);
+    kvm_set_cr4(vcpu, cr4);
+
+    if (entry_ctls & VM_ENTRY_LOAD_DEBUG_CONTROLS) {
+        kvm_set_dr(vcpu, 7, vmcs_read(GUEST_DR7));
+        kvm_emulate_msr_write(vcpu, MSR_IA32_DEBUGCTLMSR, vmcs_read(GUEST_IA32_DEBUGCTLMSR_FULL));
+    }
+    kvm_emulate_msr_write(vcpu, MSR_IA32_SYSENTER_CS, vmcs_read(GUEST_IA32_SYSENTER_CS));
+    kvm_emulate_msr_write(vcpu, MSR_IA32_SYSENTER_ESP, vmcs_read(GUEST_IA32_SYSENTER_ESP));
+    kvm_emulate_msr_write(vcpu, MSR_IA32_SYSENTER_EIP, vmcs_read(GUEST_IA32_SYSENTER_EIP));
+
+    kvm_emulate_msr_write(vcpu, MSR_FS_BASE, vmcs_read(GUEST_FS_BASE));
+    kvm_emulate_msr_write(vcpu, MSR_GS_BASE, vmcs_read(GUEST_GS_BASE));
+
+    if (entry_ctls & VM_ENTRY_LOAD_IA32_EFER) {
+        kvm_emulate_msr_write(vcpu, MSR_EFER, efer);
+    } else {
+        printk(KERN_WARNING "[opentdx] does not allow unsetting load_ia32_efer entry ctls");
+        return 1;
+    }
+// TODO: IA32_PERF_GLOBAL_CTL
+    if (entry_ctls & VM_ENTRY_LOAD_IA32_PAT) {
+        kvm_emulate_msr_write(vcpu, MSR_IA32_CR_PAT, vmcs_read(GUEST_IA32_PAT_FULL));
+    }
+// TODO: IA32_BNDCFGS
+    if (entry_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL) {
+        printk(KERN_WARNING "[opentdx] do not support loading ia32_rtit_ctl");
+    }
+    if (entry_ctls & VM_ENTRY_LOAD_CET_STATE) {
+        kvm_emulate_msr_write(vcpu, MSR_IA32_S_CET, vmcs_read(GUEST_IA32_S_CET));
+        kvm_emulate_msr_write(vcpu, MSR_IA32_INT_SSP_TAB, vmcs_read(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR));
+    }
+// TODO: PKRS
+// TODO: UINV
+// TODO: SMBASE
+
+    __vmx_set_segment(vcpu, &cs, VCPU_SREG_CS);
+    __vmx_set_segment(vcpu, &ss, VCPU_SREG_SS);
+    __vmx_set_segment(vcpu, &ds, VCPU_SREG_DS);
+    __vmx_set_segment(vcpu, &es, VCPU_SREG_ES);
+    __vmx_set_segment(vcpu, &fs, VCPU_SREG_FS);
+    __vmx_set_segment(vcpu, &gs, VCPU_SREG_GS);
+    __vmx_set_segment(vcpu, &ldtr, VCPU_SREG_LDTR);
+    __vmx_set_segment(vcpu, &tr, VCPU_SREG_TR);
+
+    vmx_set_gdt(vcpu, &gdtr);
+    vmx_set_idt(vcpu, &idtr);
+
+    kvm_rsp_write(vcpu, vmcs_read(GUEST_RSP));
+    kvm_rip_write(vcpu, vmcs_read(GUEST_RIP));
+    kvm_set_rflags(vcpu, rflags);
+
+    printk(KERN_WARNING "guest rip: %0llx\n", vmcs_read(GUEST_RIP));
+
+    if (entry_ctls & VM_ENTRY_LOAD_CET_STATE) {
+        vmcs_writel(GUEST_SSP, vmcs_read(GUEST_SSP));
+    }
+// TODO: do not allow PAE paging
+
+    /* 27.3.3 Clearing Address-Range Monitoring */
+
+    /* 27.4 Loading MSRs */
+
+    /* 27.5 Trace-Address Pre-Translation */
+
+    /* 27.6 Event Injection */
+
+    /* 27.7 Special Features of VM Entry */
+
+    return 0;
+}
+
 static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
     u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
@@ -238,7 +417,6 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
         kvm_emulate_msr_write(vcpu, MSR_IA32_S_CET, vmcs_read(HOST_IA32_S_CET));
         kvm_emulate_msr_write(vcpu, MSR_IA32_INT_SSP_TAB, vmcs_read(HOST_IA32_INTERRUPT_SSP_TABLE_ADDR));
     }
-// TODO: IA32_S_CET
 // TODO: IA32_PKRS
 
     /* 28.5.2 Loading Host Segment and Descriptor-Table Registers */
@@ -363,6 +541,21 @@ static void save_exit_info(struct kvm_vcpu *vcpu, u8 *vmcs)
     // IO-RCX, IO-RSI, IO-RDI, IO-RIP
 }
 
+static int check_entry_info(struct kvm_vcpu *vcpu, u8 *vmcs)
+{
+    /* 27.2 Checks on VMX controls and host-state area */
+
+    /* 27.2.1 Checks on VMX controls */
+
+    /* 27.2.2 Checks on host registers, MSRs, and SSP */
+
+    /* 27.2.3 Checks on host segment and descriptor-table registers */
+
+    /* 27.2.4 Checks related to address-space size */
+
+    return 0;
+}
+
 static int vmx_succeed(struct kvm_vcpu *vcpu)
 {
 	vmx_set_rflags(vcpu, vmx_get_rflags(vcpu)
@@ -407,6 +600,7 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
         kvm_queue_exception(vcpu, UD_VECTOR);
         return 1;
     } else if (is_guest_mode(vcpu)) {
+        // TODO: set "VM exit from VMX root operation" 0
         nested_vmx_vmexit(vcpu, EXIT_REASON_SEAMCALL, 0, 0);
         return 1;
     } else if (vmx_get_cpl(vcpu) > 0 || vmx->seamrr.enabled == 0) {
@@ -465,7 +659,62 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
 exit:
     free_page((unsigned long) vmcs);
 
-    return kvm_complete_insn_gp(vcpu, 0);
+    return kvm_complete_insn_gp(vcpu, err);
+}
+
+int handle_seamret(struct kvm_vcpu *vcpu)
+{
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    u64 efer;
+    struct kvm_segment cs;
+    int err = 0;
+
+    struct page *vmcs_page = alloc_page(GFP_KERNEL);
+
+    void *vmcs = page_address(vmcs_page);
+
+    kvm_emulate_msr_read(vcpu, MSR_EFER, &efer);
+    vmx_get_segment(vcpu, &cs, VCPU_SREG_CS);
+
+    if (!vmx->seam_mode || (!(efer & EFER_LMA)) || !cs.l || is_guest_mode(vcpu)) {
+        kvm_queue_exception(vcpu, UD_VECTOR);
+
+        free_page((unsigned long) vmcs);
+        return 1;
+    } else if (vmx_get_cpl(vcpu) > 0) {
+        err = 1;
+        goto exit;
+    }
+    // TODO: Check current vmptr (i.e., vmx->seam_vmptr) is valid? Can it be invalid?
+
+    kvm_read_guest_page(vcpu->kvm, gpa_to_gfn(vmx->seam_vmptr), vmcs, 0, PAGE_SIZE);
+
+    if (check_entry_info(vcpu, vmcs)) {
+        // TODO: Check settings of VMX controls and host-state area
+        vmx_set_rflags(vcpu, X86_EFLAGS_ZF);
+
+        vmcs_write(VM_INSTRUCTION_ERRORCODE, 0x7);
+
+        free_page((unsigned long) vmcs);
+        return 1;
+    }
+
+    if (load_guest_state(vcpu, vmcs)) {
+        printk(KERN_WARNING "[opentdx] loading guest state returned 1");
+
+        vmcs_write(VM_EXIT_REASON,
+            VMX_EXIT_REASONS_FAILED_VMENTRY | EXIT_REASON_INVALID_STATE);
+        vmcs_write(VM_EXIT_QUALIFICATION, 0);
+        goto exit;
+    }
+
+exit:
+    free_page((unsigned long) vmcs);
+
+    if (err)
+        kvm_inject_gp(vcpu, 0);
+
+    return 1;
 }
 
 static struct nested_vmx_instruction_handlers {

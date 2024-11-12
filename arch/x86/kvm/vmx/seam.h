@@ -4,6 +4,11 @@
 
 #include <linux/kvm_host.h>
 
+#include "vmx_vmcs.h"
+
+#define __SEAMCALL_BYTECODE             0x66,0x0f,0x01,0xcf
+#define __SEAMRET_BYTECODE              0x66,0x0f,0x01,0xcd
+
 #define MTRR_SEAMRR_ENABLED             BIT(15)
 
 #define MSR_IA32_SEAMRR_PHYS_BASE       0x1400
@@ -85,10 +90,39 @@ struct msr_seam_extend {
         printk(KERN_WARNING "%s: unsupported size %d for vmcs_write\n", __func__, VMX_##field##_SIZE); \
     }
 
+#define read_segment_helper(seg) \
+static inline void read_segment_##seg(struct kvm_segment *var, u8 *vmcs)    \
+{   \
+    u32 ar; \
+    var->base = vmcs_read(GUEST_##seg##_BASE);  \
+    var->limit = vmcs_read(GUEST_##seg##_LIMIT);    \
+    var->selector = vmcs_read(GUEST_##seg##_SELECTOR);  \
+    ar = vmcs_read(GUEST_##seg##_ARBYTE);   \
+    var->unusable = (ar >> 16) & 1; \
+    var->type = ar & 15;    \
+    var->s = (ar >> 4) & 1; \
+    var->dpl = (ar >> 5) & 3;   \
+    var->present = !var->unusable;  \
+    var->avl = (ar >> 12) & 1;  \
+    var->l = (ar >> 13) & 1;    \
+    var->g = (ar >> 15) & 1;    \
+}
+
+read_segment_helper(CS)
+read_segment_helper(SS)
+read_segment_helper(DS)
+read_segment_helper(ES)
+read_segment_helper(FS)
+read_segment_helper(GS)
+read_segment_helper(LDTR)
+read_segment_helper(TR)
+
+
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
 void handle_seam_extend(struct kvm_vcpu *vcpu);
 
 int handle_seamcall(struct kvm_vcpu *vcpu);
+int handle_seamret(struct kvm_vcpu *vcpu);
 __init int seam_vmx_hardware_setup(int (*exit_handlers[])(struct kvm_vcpu *));
 
 #endif

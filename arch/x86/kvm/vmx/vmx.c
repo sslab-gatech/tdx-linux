@@ -5343,11 +5343,14 @@ bool vmx_guest_inject_ac(struct kvm_vcpu *vcpu)
 
 static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 {
+	static const char seamret_bytecode[] = { __SEAMRET_BYTECODE };
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct kvm_run *kvm_run = vcpu->run;
 	u32 intr_info, ex_no, error_code;
 	unsigned long cr2, dr6;
 	u32 vect_info;
+	char inst[4];
+	struct x86_exception e;
 
 	vect_info = vmx->idt_vectoring_info;
 	intr_info = vmx_get_intr_info(vcpu);
@@ -5371,8 +5374,17 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 		return 1;
 	}
 
-	if (is_invalid_opcode(intr_info))
-		return handle_ud(vcpu);
+	if (is_invalid_opcode(intr_info)) {
+		if (open_tdx &&
+			kvm_read_guest_virt(vcpu, kvm_rip_read(vcpu),
+				inst, sizeof(inst), &e) == 0 &&
+			memcmp(inst, seamret_bytecode, sizeof(inst)) == 0) {
+
+			handle_seamret(vcpu);
+			return 1;
+		} else
+			return handle_ud(vcpu);
+	}
 
 	error_code = 0;
 	if (intr_info & INTR_INFO_DELIVER_CODE_MASK)
