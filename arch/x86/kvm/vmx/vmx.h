@@ -16,9 +16,7 @@
 #include "../cpuid.h"
 #include "run_flags.h"
 
-#include "smx.h"
 #include "seam.h"
-#include "mktme.h"
 
 #define MSR_TYPE_R	1
 #define MSR_TYPE_W	2

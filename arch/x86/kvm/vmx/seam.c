@@ -11,6 +11,15 @@
 #include <asm/asm.h>
 #include <asm/segment.h>
 
+enum seamops_function {
+    CAPABILITIES    = 0x0,
+    SEAMREPORT      = 0x1,
+    SEAMDB_CLEAR    = 0x2,
+    SEAMDB_INSERT   = 0x3,
+    SEAMDB_GETREF   = 0x4,
+    SEAMDB_REPORT   = 0x5,
+};
+
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -60,7 +69,7 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 }
 
 
-void handle_seam_extend(struct kvm_vcpu *vcpu)
+void handle_seamextend(struct kvm_vcpu *vcpu)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
     u64 rdx, rax, value;
@@ -719,6 +728,80 @@ int handle_seamret(struct kvm_vcpu *vcpu)
 exit:
     free_page((unsigned long) vmcs);
 
+    if (err)
+        kvm_inject_gp(vcpu, 0);
+
+    return 1;
+}
+
+static int handle_seamops_capabilities(struct kvm_vcpu *vcpu)
+{
+// TODO
+    kvm_rax_write(vcpu, CAPABILITIES_SEAMDB_GETREF | 0x1);
+    return 0;
+}
+
+static int handle_seamops_seamdb_getref(struct kvm_vcpu *vcpu)
+{
+// TODO
+    kvm_rax_write(vcpu, 0x0);
+    kvm_r10_write(vcpu, 0x0);
+    kvm_r11_write(vcpu, 0x0);
+    kvm_r12_write(vcpu, 0x0);
+    kvm_r13_write(vcpu, 0x0);
+    kvm_r14_write(vcpu, 0x0);
+    kvm_r15_write(vcpu, 0x0);
+    return 0;
+}
+
+int handle_seamops(struct kvm_vcpu *vcpu)
+{
+    static const char seamops_bytecode[] = { __SEAMOPS_BYTECODE };
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    u64 efer;
+    struct kvm_segment cs;
+    unsigned long rip = kvm_rip_read(vcpu);
+    u32 eax = kvm_rax_read(vcpu);
+    int err = 0;
+
+    kvm_emulate_msr_read(vcpu, MSR_EFER, &efer);
+    vmx_get_segment(vcpu, &cs, VCPU_SREG_CS);
+
+    if (!vmx->seam_mode || !(efer & EFER_LMA) || !cs.l || is_guest_mode(vcpu)) {
+        kvm_queue_exception(vcpu, UD_VECTOR);
+        return 1;
+    } else if (vmx_get_cpl(vcpu) > 0) {
+        err = 1;
+        goto exit;
+    }
+// TODO: lock CRPL_CPUSVN and BIOS_SE_SVN
+
+    switch (eax) {
+    case CAPABILITIES:
+        err = handle_seamops_capabilities(vcpu);
+        break;
+    case SEAMREPORT:
+        err = 1;
+        break;
+    case SEAMDB_CLEAR:
+        err = 1;
+        break;
+    case SEAMDB_INSERT:
+        err = 1;
+        break;
+    case SEAMDB_GETREF:
+        err = handle_seamops_seamdb_getref(vcpu);
+        break;
+    case SEAMDB_REPORT:
+        err = 1;
+        break;
+    default:
+        err = 1;
+    }
+
+    kvm_rip_write(vcpu, rip + sizeof(seamops_bytecode));
+
+exit:
     if (err)
         kvm_inject_gp(vcpu, 0);
 

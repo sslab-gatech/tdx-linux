@@ -8,6 +8,7 @@
 
 #define __SEAMCALL_BYTECODE             0x66,0x0f,0x01,0xcf
 #define __SEAMRET_BYTECODE              0x66,0x0f,0x01,0xcd
+#define __SEAMOPS_BYTECODE              0x66,0x0f,0x01,0xce
 
 #define MTRR_SEAMRR_ENABLED             BIT(15)
 
@@ -117,12 +118,18 @@ read_segment_helper(GS)
 read_segment_helper(LDTR)
 read_segment_helper(TR)
 
+#define CAPABILITIES_SEAMREPORT     BIT(1)
+#define CAPABILITIES_SEAMDB_CLEAR   BIT(2)
+#define CAPABILITIES_SEAMDB_INSERT  BIT(3)
+#define CAPABILITIES_SEAMDB_GETREF  BIT(4)
+#define CAPABILITIES_SEAMDB_REPORT  BIT(5)
 
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
-void handle_seam_extend(struct kvm_vcpu *vcpu);
+void handle_seamextend(struct kvm_vcpu *vcpu);
 
 int handle_seamcall(struct kvm_vcpu *vcpu);
 int handle_seamret(struct kvm_vcpu *vcpu);
+int handle_seamops(struct kvm_vcpu *vcpu);
 __init int seam_vmx_hardware_setup(int (*exit_handlers[])(struct kvm_vcpu *));
 
 #endif

@@ -9,6 +9,17 @@
 
 #include <asm/asm.h>
 
+enum smx_getsec_function {
+    CAPABILITIES = 0x00,
+    ENTERACCS    = 0x02,
+    EXITAC       = 0x03,
+    SENTER       = 0x04,
+    SEXIT        = 0x05,
+    PARAMETERS   = 0x06,
+    SMCTRL       = 0x07,
+    WAKEUP       = 0x08,
+};
+
 static void dump_acm_header(struct acm_header *acm_header);
 static int authenticate_acm(struct acm_header *acm_header);
 static void dump_post_enteraccs(struct kvm_vcpu *vcpu);

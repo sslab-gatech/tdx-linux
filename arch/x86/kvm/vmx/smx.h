@@ -9,17 +9,6 @@
 
 #define MSR_IA32_SGX_DEBUG_MODE         0x503
 
-enum smx_getsec_function {
-    CAPABILITIES = 0x00,
-    ENTERACCS    = 0x02,
-    EXITAC       = 0x03,
-    SENTER       = 0x04,
-    SEXIT        = 0x05,
-    PARAMETERS   = 0x06,
-    SMCTRL       = 0x07,
-    WAKEUP       = 0x08,
-};
-
 #define CAPABILITIES_CHIPSET_PRESENT    BIT(0)
 #define CAPABILITIES_ENTERACCS          BIT(2)
 #define CAPABILITIES_EXITAC             BIT(3)

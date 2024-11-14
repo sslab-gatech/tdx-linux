@@ -2549,7 +2549,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			mcheck(vcpu, vmx->seamrr.base + vmx->seamrr.size - PAGE_SIZE);
 		break;
 	case MSR_IA32_SEAMEXTEND:
-		handle_seam_extend(vcpu);
+		handle_seamextend(vcpu);
 		break;
 	case MSR_IA32_MKTME_KEYID_PARTITIONING:
 		return 1;
@@ -5349,6 +5349,7 @@ bool vmx_guest_inject_ac(struct kvm_vcpu *vcpu)
 static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 {
 	static const char seamret_bytecode[] = { __SEAMRET_BYTECODE };
+	static const char seamops_bytecode[] = { __SEAMOPS_BYTECODE };
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct kvm_run *kvm_run = vcpu->run;
 	u32 intr_info, ex_no, error_code;
@@ -5380,13 +5381,15 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 	}
 
 	if (is_invalid_opcode(intr_info)) {
-		if (open_tdx &&
-			kvm_read_guest_virt(vcpu, kvm_rip_read(vcpu),
-				inst, sizeof(inst), &e) == 0 &&
-			memcmp(inst, seamret_bytecode, sizeof(inst)) == 0) {
-
-			handle_seamret(vcpu);
-			return 1;
+		if (open_tdx && kvm_read_guest_virt(vcpu, kvm_rip_read(vcpu), 
+				inst, sizeof(inst), &e) == 0) {
+	
+			if (memcmp(inst, seamops_bytecode, sizeof(inst)) == 0)
+				return handle_seamops(vcpu);
+			else if (memcmp(inst, seamret_bytecode, sizeof(inst)) == 0)
+				return handle_seamret(vcpu);
+			else
+				return handle_ud(vcpu);
 		} else
 			return handle_ud(vcpu);
 	}
