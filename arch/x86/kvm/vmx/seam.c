@@ -18,11 +18,10 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
     u32 eax = 0x1, ebx, ecx, edx;
     int i;
 
-    struct page *empty_page = alloc_page(GFP_KERNEL);
+    struct page *seaminfo_page = alloc_page(GFP_KERNEL);
     // TODO: handle if alloc_page failed
 
-    void *empty = page_address(empty_page);
-    memset(empty, 0, PAGE_SIZE);
+    void *seaminfo = page_address(seaminfo_page);
 
     sys_info_table.version = 0;
     sys_info_table.tot_num_lps = vcpu->kvm->created_vcpus;
@@ -52,10 +51,12 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
         sys_info_table.cmr[i].size = 0;
     }
 
-    kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(gpa), empty, 0, PAGE_SIZE);
-    kvm_write_guest(vcpu->kvm, gpa, (void *) &sys_info_table, sizeof(sys_info_table));
+    kvm_read_guest_page(vcpu->kvm, gpa_to_gfn(gpa), seaminfo, 0, PAGE_SIZE);
+    memset(seaminfo, 0, PAGE_SIZE / 2);
+    memcpy(seaminfo, &sys_info_table, sizeof(sys_info_table));
+    kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(gpa), seaminfo, 0, PAGE_SIZE);
 
-    free_page((unsigned long) empty);
+    free_page((unsigned long) seaminfo);
 }
 
 
@@ -337,8 +338,6 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     kvm_rsp_write(vcpu, vmcs_read(GUEST_RSP));
     kvm_rip_write(vcpu, vmcs_read(GUEST_RIP));
     kvm_set_rflags(vcpu, rflags);
-
-    printk(KERN_WARNING "guest rip: %0llx\n", vmcs_read(GUEST_RIP));
 
     if (entry_ctls & VM_ENTRY_LOAD_CET_STATE) {
         vmcs_writel(GUEST_SSP, vmcs_read(GUEST_SSP));

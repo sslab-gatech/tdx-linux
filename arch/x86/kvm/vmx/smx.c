@@ -313,6 +313,7 @@ static int handle_getsec_exitac(struct kvm_vcpu *vcpu)
 
 int handle_getsec(struct kvm_vcpu *vcpu)
 {
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
 	unsigned long cr4 = kvm_read_cr4(vcpu);
     u32 eax = kvm_rax_read(vcpu);
 
@@ -328,7 +329,10 @@ int handle_getsec(struct kvm_vcpu *vcpu)
         err = handle_getsec_capabilities(vcpu);
         break;
     case ENTERACCS:
-        err = handle_getsec_enteraccs(vcpu);
+        if (!vmx->seamrr.enabled)
+            err = 1;
+        else
+            err = handle_getsec_enteraccs(vcpu);
         break;
     case EXITAC:
         err = handle_getsec_exitac(vcpu);

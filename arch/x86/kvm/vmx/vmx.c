@@ -2542,9 +2542,11 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		if (data & ~(SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu)) | SEAMRR_MASK_LOCKED | SEAMRR_MASK_ENABLED))
 			return 1;
 		vmx->seamrr.size = data & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu));
+		// TODO: when is SEAMRR_PHYS_MASK locked? Is it manually set?
 		vmx->seamrr.locked = (data & SEAMRR_MASK_LOCKED) >> SEAMRR_MASK_LOCK_OFFSET;
 		vmx->seamrr.enabled = (data & SEAMRR_MASK_ENABLED) >> SEAMRR_MASK_ENABLE_OFFSET;
-		mcheck(vcpu, vmx->seamrr.base + vmx->seamrr.size - PAGE_SIZE);
+		if (vmx->seamrr.enabled)
+			mcheck(vcpu, vmx->seamrr.base + vmx->seamrr.size - PAGE_SIZE);
 		break;
 	case MSR_IA32_SEAMEXTEND:
 		handle_seam_extend(vcpu);
@@ -5014,6 +5016,9 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vmx->msr_ia32_bios_done = 1;
 	vmx->seamrr.base = 0;
 	vmx->seamrr.size = 0;
+	vmx->seamrr.configured = 0;
+	vmx->seamrr.locked = 0;
+	vmx->seamrr.enabled = 1;
 
 	vmx->seam_extend.valid = 1;
 	vmx->seam_extend.seam_ready = 0;
