@@ -22,7 +22,7 @@ enum seamops_function {
 
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 {
-    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
     struct sys_info_table sys_info_table;
     u32 eax = 0x1, ebx, ecx, edx;
     int i;
@@ -45,7 +45,7 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
         }
     }
 
-    sys_info_table.p_seamldr_range.base = vmx->seamrr.base + vmx->seamrr.size - P_SEAMLDR_RANGE_SIZE;
+    sys_info_table.p_seamldr_range.base = kvm_vmx->seamrr.base + kvm_vmx->seamrr.size - P_SEAMLDR_RANGE_SIZE;
     sys_info_table.p_seamldr_range.size = P_SEAMLDR_RANGE_SIZE;
 
     sys_info_table.skip_smrr2_check = 0;
@@ -611,13 +611,13 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
         // TODO: set "VM exit from VMX root operation" 0
         nested_vmx_vmexit(vcpu, EXIT_REASON_SEAMCALL, 0, 0);
         return 1;
-    } else if (vmx_get_cpl(vcpu) > 0 || vmx->seamrr.enabled == 0) {
+    } else if (vmx_get_cpl(vcpu) > 0 || kvm_vmx->seamrr.enabled == 0) {
 // TODO: events blocking by MOV-SS
         err = 1;
         goto exit;
     }
 
-    seam_cvp = (vmx->seamrr.base + PAGE_SIZE) + (edx & 0xFFFFFFFF) * PAGE_SIZE;
+    seam_cvp = (kvm_vmx->seamrr.base + PAGE_SIZE) + (edx & 0xFFFFFFFF) * PAGE_SIZE;
 
     rax = kvm_rax_read(vcpu);
 
@@ -633,7 +633,7 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
 // TODO: Check P_SEAMLDR is loaded and enabled
             return vmx_fail_invalid(vcpu);
         }
-        seam_cvp = vmx->seamrr.base + vmx->seamrr.size - P_SEAMLDR_RANGE_SIZE + PAGE_SIZE;
+        seam_cvp = kvm_vmx->seamrr.base + kvm_vmx->seamrr.size - P_SEAMLDR_RANGE_SIZE + PAGE_SIZE;
         vmx->in_pseamldr = true;
     } else {
 // TODO: Check TDX Module is loaded

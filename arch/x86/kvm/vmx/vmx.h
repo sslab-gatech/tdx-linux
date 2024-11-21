@@ -377,7 +377,6 @@ struct vcpu_vmx {
 	u64 msr_ia32_bios_se_svn;
 	u64 msr_ia32_bios_done;
 
-	struct seam_range seamrr;
 	struct msr_seam_extend seam_extend;
 };
 
@@ -390,10 +389,13 @@ struct kvm_vmx {
 	/* Posted Interrupt Descriptor (PID) table for IPI virtualization */
 	u64 *pid_table;
 
+	struct seam_range seamrr;
+
 	struct mutex p_seamldr_lock;
 
 	u64 msr_ia32_tme_capability;
 	u64 msr_ia32_tme_activate;
+
 };
 
 void vmx_vcpu_load_vmcs(struct kvm_vcpu *vcpu, int cpu,
