@@ -377,7 +377,6 @@ struct vcpu_vmx {
 	u64 msr_ia32_bios_se_svn;
 	u64 msr_ia32_bios_done;
 
-	struct msr_seam_extend seam_extend;
 };
 
 struct kvm_vmx {
@@ -390,6 +389,7 @@ struct kvm_vmx {
 	u64 *pid_table;
 
 	struct seam_range seamrr;
+	struct msr_seam_extend seam_extend;
 
 	struct mutex p_seamldr_lock;
 

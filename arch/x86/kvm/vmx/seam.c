@@ -71,7 +71,7 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 
 void handle_seamextend(struct kvm_vcpu *vcpu)
 {
-    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
     u64 rdx, rax, value;
     rdx = kvm_rdx_read(vcpu);
     rax = kvm_rax_read(vcpu);
@@ -80,11 +80,11 @@ void handle_seamextend(struct kvm_vcpu *vcpu)
     gpa_t gpa = value & ~0x1ULL;
 
     if (value & 1) {
-        kvm_write_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
+        kvm_write_guest(vcpu->kvm, gpa, (void *) &kvm_vmx->seam_extend, sizeof(kvm_vmx->seam_extend));
     } else {
-        kvm_read_guest(vcpu->kvm, gpa, (void *) &vmx->seam_extend, sizeof(vmx->seam_extend));
+        kvm_read_guest(vcpu->kvm, gpa, (void *) &kvm_vmx->seam_extend, sizeof(kvm_vmx->seam_extend));
     }
-    vmx->seam_extend.valid = 1;
+    kvm_vmx->seam_extend.valid = 1;
 }
 
 static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)

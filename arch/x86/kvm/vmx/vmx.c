@@ -5011,10 +5011,6 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vmx->msr_ia32_bios_se_svn = 0;
 	vmx->msr_ia32_bios_done = 1;
 
-	vmx->seam_extend.valid = 1;
-	vmx->seam_extend.seam_ready = 0;
-	vmx->seam_extend.p_seamldr_ready = 0;
-
 	vmx->hv_deadline_tsc = -1;
 	kvm_set_cr8(vcpu, 0);
 
@@ -7783,6 +7779,10 @@ static int vmx_vm_init(struct kvm *kvm)
 	kvm_vmx->seamrr.configured = 0;
 	kvm_vmx->seamrr.locked = 0;
 	kvm_vmx->seamrr.enabled = 1;
+
+	kvm_vmx->seam_extend.valid = 1;
+	kvm_vmx->seam_extend.seam_ready = 0;
+	kvm_vmx->seam_extend.p_seamldr_ready = 0;
 
 	mutex_init(&kvm_vmx->p_seamldr_lock);
 	kvm_vmx->msr_ia32_tme_capability = (
