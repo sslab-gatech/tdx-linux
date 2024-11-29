@@ -2152,7 +2152,7 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 						  kvm_get_msr_common(vcpu, msr_info));
 		break;
 	case MSR_IA32_SGX_DEBUG_MODE:
-		msr_info->data = 0;
+		msr_info->data = 0x2; // Always SGX debug mode
 		break;
 	case MSR_IA32_SEAMRR_PHYS_BASE:
 		msr_info->data = ((kvm_vmx->seamrr.base & SEAMRR_BASE_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
@@ -2574,7 +2574,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		}
 
 		kvm_vmx->msr_ia32_tme_activate = data | TME_ACT_LOCKED;
-		return 1;
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_index);
