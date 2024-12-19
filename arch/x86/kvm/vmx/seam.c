@@ -737,7 +737,21 @@ exit:
 static int handle_seamops_capabilities(struct kvm_vcpu *vcpu)
 {
 // TODO
-    kvm_rax_write(vcpu, CAPABILITIES_SEAMDB_GETREF | 0x1);
+    kvm_rax_write(vcpu, 
+        CAPABILITIES_SEAMDB_CLEAR | CAPABILITIES_SEAMDB_INSERT | 
+        CAPABILITIES_SEAMDB_GETREF | 0x1);
+    return 0;
+}
+
+static int handle_seamops_seamdb_clear(struct kvm_vcpu *vcpu)
+{
+    kvm_rax_write(vcpu, 0x0);
+    return 0;
+}
+
+static int handle_seamops_seamdb_insert(struct kvm_vcpu *vcpu)
+{
+    kvm_rax_write(vcpu, 0x0);
     return 0;
 }
 
@@ -784,10 +798,10 @@ int handle_seamops(struct kvm_vcpu *vcpu)
         err = 1;
         break;
     case SEAMDB_CLEAR:
-        err = 1;
+        err = handle_seamops_seamdb_clear(vcpu);
         break;
     case SEAMDB_INSERT:
-        err = 1;
+        err = handle_seamops_seamdb_insert(vcpu);
         break;
     case SEAMDB_GETREF:
         err = handle_seamops_seamdb_getref(vcpu);
