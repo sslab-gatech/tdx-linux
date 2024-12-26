@@ -3568,7 +3568,7 @@ void vmx_set_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
 	 * is in force while we are in guest mode.  Do not let guests control
 	 * this bit, even if host CR4.MCE == 0.
 	 */
-	hw_cr4 = (cr4_read_shadow() & X86_CR4_MCE) | (cr4 & ~X86_CR4_MCE);
+	hw_cr4 = (cr4_read_shadow() & X86_CR4_MCE) | (cr4 & ~X86_CR4_MCE & ~X86_CR4_SMXE);
 	if (enable_unrestricted_guest)
 		hw_cr4 |= KVM_VM_CR4_ALWAYS_ON_UNRESTRICTED_GUEST;
 	else if (vmx->rmode.vm86_active)
@@ -5335,6 +5335,9 @@ bool vmx_guest_inject_ac(struct kvm_vcpu *vcpu)
 
 static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 {
+	static const char getsec_bytecode[] = { __GETSEC_BYTECODE };
+	static const char rexw_getsec_bytecode[] = { 0x48,__GETSEC_BYTECODE };
+	static const char seamcall_bytecode[] = { __SEAMCALL_BYTECODE };
 	static const char seamret_bytecode[] = { __SEAMRET_BYTECODE };
 	static const char seamops_bytecode[] = { __SEAMOPS_BYTECODE };
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -5370,10 +5373,15 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 	if (is_invalid_opcode(intr_info)) {
 		if (open_tdx && kvm_read_guest_virt(vcpu, kvm_rip_read(vcpu), 
 				inst, sizeof(inst), &e) == 0) {
-	
-			if (memcmp(inst, seamops_bytecode, sizeof(inst)) == 0)
+
+			if (memcmp(inst, getsec_bytecode, sizeof(getsec_bytecode)) == 0 ||
+				memcmp(inst, rexw_getsec_bytecode, sizeof(rexw_getsec_bytecode)) == 0)
+				return handle_getsec(vcpu);
+			else if (memcmp(inst, seamcall_bytecode, sizeof(seamcall_bytecode)) == 0)
+				return handle_seamcall(vcpu);
+			else if (memcmp(inst, seamops_bytecode, sizeof(seamops_bytecode)) == 0)
 				return handle_seamops(vcpu);
-			else if (memcmp(inst, seamret_bytecode, sizeof(inst)) == 0)
+			else if (memcmp(inst, seamret_bytecode, sizeof(seamret_bytecode)) == 0)
 				return handle_seamret(vcpu);
 			else
 				return handle_ud(vcpu);
