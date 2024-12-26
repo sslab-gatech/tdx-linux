@@ -4,6 +4,8 @@
 
 #include <linux/kvm_host.h>
 
+#define __GETSEC_BYTECODE       0x0f,0x37
+
 #define MSR_IA32_BIOS_DONE      0x151
 #define MSR_IA32_BIOS_SE_SVN    0x302
 

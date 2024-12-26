@@ -52,7 +52,7 @@ static int handle_getsec_enteraccs(struct kvm_vcpu *vcpu)
     unsigned long cr0, cr4;
     u32 entry_point, eip, next_eip, instr_len;
     struct desc_ptr old_gdt, gdt;
-    struct kvm_segment old_cs, cs, ds;
+    struct kvm_segment old_cs = {0,}, cs = {0,}, ds = {0,};
 
     {
         /* Bunch of sanity checks go here.
@@ -248,7 +248,7 @@ static void dump_post_enteraccs(struct kvm_vcpu *vcpu)
     unsigned long cr0, cr4;
     u32 eip, eflags, ebx, ecx, edx, ebp;
     struct desc_ptr gdt;
-    struct kvm_segment cs, ds;
+    struct kvm_segment cs = {0,}, ds = {0,};
 
     cr0 = kvm_read_cr0(vcpu);
     cr4 = kvm_read_cr4(vcpu);
@@ -286,7 +286,7 @@ static int handle_getsec_exitac(struct kvm_vcpu *vcpu)
     struct vcpu_vmx *vmx = to_vmx(vcpu);
     u64 efer;
     u32 ebx, edx, r8, instr_len;
-    struct kvm_segment old_cs;
+    struct kvm_segment old_cs = {0,};
 
     ebx = kvm_rbx_read(vcpu);
     edx = kvm_rdx_read(vcpu);
