@@ -8,6 +8,7 @@
 #include "seam.h"
 #include "nested.h"
 
+#include "x86.h"
 #include <asm/asm.h>
 #include <asm/segment.h>
 
@@ -91,6 +92,8 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
     u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
 
+    int has_cet = kvm_cpu_cap_has(X86_FEATURE_SHSTK) && kvm_cpu_cap_has(X86_FEATURE_IBT);
+
     /* 28.3 Saving Guest State */
 
     /* 28.3.1 Saving Control Registers, Debug Registers, and MSRs */
@@ -114,8 +117,12 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 // TODO: IA32_BNDCFGS
     printk(KERN_WARNING "[opentdx] do not support setting GUEST_IA32_RTIT_CTL");
     // vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
-    vmcs_write(GUEST_IA32_S_CET, vmcs_readl(GUEST_S_CET));
-    vmcs_write(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR, vmcs_readl(GUEST_INTR_SSP_TABLE));
+    if (has_cet) {
+        vmcs_write(GUEST_IA32_S_CET, vmcs_readl(GUEST_S_CET));
+        vmcs_write(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR, vmcs_readl(GUEST_INTR_SSP_TABLE));
+    } else {
+        printk(KERN_WARNING "[opentdx] do not support setting GUEST_S_CET, GUEST_INTR_SSP_TABLE");
+    }
 // TODO: IA32_LBR_CTL
 // TODO: PKRS
 // TODO: User interrupts
@@ -174,7 +181,12 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     vmcs_write(GUEST_RSP, vmcs_readl(GUEST_RSP));
     vmcs_write(GUEST_RIP, vmcs_readl(GUEST_RIP));
     vmcs_write(GUEST_RFLAGS, vmcs_readl(GUEST_RFLAGS));
-    vmcs_write(GUEST_SSP, vmcs_readl(GUEST_SSP));
+
+    if (has_cet) {
+        vmcs_write(GUEST_SSP, vmcs_readl(GUEST_SSP));
+    } else {
+        printk(KERN_WARNING "[opentdx] do not support setting GUEST_SSP");
+    }
 // TODO: handling Resume Flag?
 
     /* 28.3.4 Saving Non-Register State */
@@ -198,18 +210,22 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     unsigned long cr0, cr4, cr3;
     unsigned long s_cet, intr_ssp_table_addr;
-    struct kvm_segment cs, ss, ds, es, fs, gs, tr;
-    struct kvm_segment ldtr;
+    struct kvm_segment cs = {0,}, ss = {0,}, ds = {0,}, es = {0,}, fs = {0,}, gs = {0,}, tr = {0,};
+    struct kvm_segment ldtr = {0,};
     struct desc_ptr gdtr, idtr;
     u64 efer, rflags;
     // bool ia32e_mode_guest;
+
+    int has_cet = kvm_cpu_cap_has(X86_FEATURE_SHSTK) && kvm_cpu_cap_has(X86_FEATURE_IBT);
 
     cr0 = vmcs_read(GUEST_CR0);
     cr4 = vmcs_read(GUEST_CR4);
     cr3 = vmcs_read(GUEST_CR3);
 
-    s_cet = vmcs_read(GUEST_IA32_S_CET);
-    intr_ssp_table_addr = vmcs_read(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR);
+    if (has_cet) {
+        s_cet = vmcs_read(GUEST_IA32_S_CET);
+        intr_ssp_table_addr = vmcs_read(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR);
+    }
 
     efer = vmcs_read(GUEST_IA32_EFER_FULL);
 
@@ -238,7 +254,8 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (cr3 & vcpu->arch.reserved_gpa_bits)
         return 1;
 
-    if ((entry_ctls & VM_ENTRY_LOAD_CET_STATE) && (
+    if (has_cet && (
+        entry_ctls & VM_ENTRY_LOAD_CET_STATE) && (
         is_noncanonical_address(s_cet, vcpu) ||
         is_noncanonical_address(intr_ssp_table_addr, vcpu)))
         return 1;
@@ -259,7 +276,8 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 // TODO: IA32_BNDCFGS
 // TODO: IA32_RTIT_CTL
 
-    if ((entry_ctls & VM_ENTRY_LOAD_CET_STATE) &&
+    if (has_cet && 
+        (entry_ctls & VM_ENTRY_LOAD_CET_STATE) &&
         ((s_cet & CET_RESERVED) ||
          ((s_cet & CET_SUPPRESS) && (s_cet & CET_WAIT_ENDBR))))
         return 1;
@@ -324,7 +342,7 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (entry_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL) {
         printk(KERN_WARNING "[opentdx] do not support loading ia32_rtit_ctl");
     }
-    if (entry_ctls & VM_ENTRY_LOAD_CET_STATE) {
+    if (has_cet && (entry_ctls & VM_ENTRY_LOAD_CET_STATE)) {
         kvm_emulate_msr_write(vcpu, MSR_IA32_S_CET, vmcs_read(GUEST_IA32_S_CET));
         kvm_emulate_msr_write(vcpu, MSR_IA32_INT_SSP_TAB, vmcs_read(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR));
     }
@@ -348,7 +366,7 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     kvm_rip_write(vcpu, vmcs_read(GUEST_RIP));
     kvm_set_rflags(vcpu, rflags);
 
-    if (entry_ctls & VM_ENTRY_LOAD_CET_STATE) {
+    if (has_cet && (entry_ctls & VM_ENTRY_LOAD_CET_STATE)) {
         vmcs_writel(GUEST_SSP, vmcs_read(GUEST_SSP));
     }
 // TODO: do not allow PAE paging
@@ -372,11 +390,13 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     unsigned long cr0, cr3, cr4;
     u64 efer;
-    struct kvm_segment cs, ss, ds, es, fs, gs, tr;
-    struct kvm_segment ldtr;
+    struct kvm_segment cs = {0,}, ss = {0,}, ds = {0,}, es = {0,}, fs = {0,}, gs = {0,}, tr = {0,};
+    struct kvm_segment ldtr = {0,};
     struct desc_ptr gdtr, idtr;
     unsigned long rip, rsp;
     u32 instr_len; 
+
+    int has_cet = kvm_cpu_cap_has(X86_FEATURE_SHSTK) && kvm_cpu_cap_has(X86_FEATURE_IBT);
 
     cr0 = vmcs_read(HOST_CR0);
     cr3 = vmcs_read(HOST_CR3);
@@ -394,6 +414,9 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
         cr4 |= X86_CR4_PAE;
     else
         cr4 &= ~X86_CR4_PCIDE;
+
+    if (!has_cet)
+        cr4 &= ~X86_CR4_CET;
     kvm_set_cr4(vcpu, cr4);
 
     kvm_set_dr(vcpu, 7, 0x400);
@@ -421,7 +444,7 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 // TODO: IA32_BNDCFGS
     if (exit_ctls & VM_EXIT_CLEAR_IA32_RTIT_CTL)
         kvm_emulate_msr_write(vcpu, MSR_IA32_RTIT_CTL, 0x0);
-    if (exit_ctls & VM_EXIT_LOAD_CET_STATE) {
+    if (has_cet && (exit_ctls & VM_EXIT_LOAD_CET_STATE)) {
         kvm_emulate_msr_write(vcpu, MSR_IA32_S_CET, vmcs_read(HOST_IA32_S_CET));
         kvm_emulate_msr_write(vcpu, MSR_IA32_INT_SSP_TAB, vmcs_read(HOST_IA32_INTERRUPT_SSP_TABLE_ADDR));
     }
@@ -506,7 +529,8 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     kvm_rip_write(vcpu, rip - instr_len);
     kvm_rsp_write(vcpu, rsp);
     // vmx_set_rflags(vcpu, rflags);
-    vmcs_writel(GUEST_SSP, vmcs_read(HOST_SSP));
+    if (has_cet)
+        vmcs_writel(GUEST_SSP, vmcs_read(HOST_SSP));
 
     /* 28.5.4 Checking and Loading Host Page-Directory-Pointer-Table Entries */
     // NOTE: PAE paging is not supported
@@ -527,8 +551,7 @@ static void save_exit_info(struct kvm_vcpu *vcpu, u8 *vmcs)
     /* 28.2 Recording VM-Exit information and updating VM-Entry control fields */
 
     /* 28.2.1 Basic VM-Exit Information */
-    vmcs_write(VM_EXIT_REASON, vmcs_read32(VM_EXIT_REASON));
-    vmcs_write(VM_EXIT_QUALIFICATION, vmcs_readl(EXIT_QUALIFICATION));
+    vmcs_write(VM_EXIT_REASON, EXIT_REASON_SEAMCALL);
 
     // Guest linear address
     // Guest physical address
@@ -544,7 +567,7 @@ static void save_exit_info(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     /* 28.2.5 Information for VM Exits due to instruction execution */
 
-    vmcs_write(VM_EXIT_INSTRUCTION_LENGTH, vmcs_read32(VM_EXIT_INSTRUCTION_LEN));
+    vmcs_write(VM_EXIT_INSTRUCTION_LENGTH, 4);
     // VM-exit instruction information
     // IO-RCX, IO-RSI, IO-RDI, IO-RIP
 }
@@ -588,7 +611,7 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
 
     u64 efer, seam_cvp, rax, rflags;
     u32 eax, ebx, ecx, edx;
-    struct kvm_segment cs;
+    struct kvm_segment cs = {0,};
     int err = 0;
 
     struct page *vmcs_page = alloc_page(GFP_KERNEL);
@@ -675,7 +698,7 @@ int handle_seamret(struct kvm_vcpu *vcpu)
     struct vcpu_vmx *vmx = to_vmx(vcpu);
     struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
     u64 efer;
-    struct kvm_segment cs;
+    struct kvm_segment cs = {0,};
     int err = 0;
 
     struct page *vmcs_page = alloc_page(GFP_KERNEL);
@@ -773,7 +796,7 @@ int handle_seamops(struct kvm_vcpu *vcpu)
     static const char seamops_bytecode[] = { __SEAMOPS_BYTECODE };
     struct vcpu_vmx *vmx = to_vmx(vcpu);
     u64 efer;
-    struct kvm_segment cs;
+    struct kvm_segment cs = {0,};
     unsigned long rip = kvm_rip_read(vcpu);
     u32 eax = kvm_rax_read(vcpu);
     int err = 0;
