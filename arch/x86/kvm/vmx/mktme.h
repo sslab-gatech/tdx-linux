@@ -15,7 +15,7 @@
 #define TME_CAP_KEYID_BITS_OFFSET       32
 #define TME_CAP_KEYID_NUM_OFFSET        36
 #define TME_CAP_KEYID_BITS              (KEYID_BITS << TME_CAP_KEYID_BITS_OFFSET)
-#define TME_CAP_KEYID_NUM               ((1ULL << KEYID_BITS) << TME_CAP_KEYID_NUM_OFFSET)
+#define TME_CAP_KEYID_NUM               (((1ULL << KEYID_BITS) - 1) << TME_CAP_KEYID_NUM_OFFSET)
 
 #define MSR_IA32_TME_ACTIVATE           0x982
 #define TME_ACT_LOCKED                  BIT(0)
@@ -28,7 +28,7 @@
 #define TME_ACT_TDX_KEYID_BITS_OFFSET   36
 #define TME_ACT_MKTME_ENC_ALG_OFFSET    48
 #define TME_ACT_RESERVED1               0x7fffff00ULL
-#define TME_ACT_RESERVED2               0xffff000000000000ULL
+#define TME_ACT_RESERVED2               0xfff8000000000000ULL
 
 static inline bool tme_locked(u64 data) {
     return !!(data & TME_ACT_LOCKED);
