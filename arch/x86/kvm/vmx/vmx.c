@@ -5068,18 +5068,29 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 
 static void vmx_enable_irq_window(struct kvm_vcpu *vcpu)
 {
-	exec_controls_setbit(to_vmx(vcpu), CPU_BASED_INTR_WINDOW_EXITING);
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
+	// If CPU is in SEAM VMX root mode, we intentionally block irq regardless of RFLAGS.IF
+	if (vmx->seam_mode && !is_guest_mode(vcpu))
+		return;
+
+	exec_controls_setbit(vmx, CPU_BASED_INTR_WINDOW_EXITING);
 }
 
 static void vmx_enable_nmi_window(struct kvm_vcpu *vcpu)
 {
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
 	if (!enable_vnmi ||
 	    vmcs_read32(GUEST_INTERRUPTIBILITY_INFO) & GUEST_INTR_STATE_STI) {
 		vmx_enable_irq_window(vcpu);
 		return;
 	}
 
-	exec_controls_setbit(to_vmx(vcpu), CPU_BASED_NMI_WINDOW_EXITING);
+	if (vmx->seam_mode && !is_guest_mode(vcpu))
+		return;
+
+	exec_controls_setbit(vmx, CPU_BASED_NMI_WINDOW_EXITING);
 }
 
 static void vmx_inject_irq(struct kvm_vcpu *vcpu, bool reinjected)
@@ -5185,7 +5196,8 @@ bool vmx_nmi_blocked(struct kvm_vcpu *vcpu)
 
 	return (vmcs_read32(GUEST_INTERRUPTIBILITY_INFO) &
 		(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI |
-		 GUEST_INTR_STATE_NMI));
+		 GUEST_INTR_STATE_NMI)) ||
+		 (to_vmx(vcpu)->seam_mode && !is_guest_mode(vcpu));
 }
 
 static int vmx_nmi_allowed(struct kvm_vcpu *vcpu, bool for_injection)
@@ -5202,12 +5214,15 @@ static int vmx_nmi_allowed(struct kvm_vcpu *vcpu, bool for_injection)
 
 bool vmx_interrupt_blocked(struct kvm_vcpu *vcpu)
 {
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
 	if (is_guest_mode(vcpu) && nested_exit_on_intr(vcpu))
 		return false;
 
 	return !(vmx_get_rflags(vcpu) & X86_EFLAGS_IF) ||
 	       (vmcs_read32(GUEST_INTERRUPTIBILITY_INFO) &
-		(GUEST_INTR_STATE_STI | GUEST_INTR_STATE_MOV_SS));
+		(GUEST_INTR_STATE_STI | GUEST_INTR_STATE_MOV_SS)) ||
+			(vmx->seam_mode && !is_guest_mode(vcpu));
 }
 
 static int vmx_interrupt_allowed(struct kvm_vcpu *vcpu, bool for_injection)
@@ -7256,6 +7271,7 @@ static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 				      int instr_len_field,
 				      int error_code_field)
 {
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	u8 vector;
 	int type;
 	bool idtv_info_valid;
@@ -7267,6 +7283,10 @@ static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 	kvm_clear_interrupt_queue(vcpu);
 
 	if (!idtv_info_valid)
+		return;
+
+	// [TODO] idt_vectoring is info often filled spuriously. Just ignore now.
+	if (vmx->seam_mode)
 		return;
 
 	kvm_make_request(KVM_REQ_EVENT, vcpu);
@@ -8394,10 +8414,12 @@ static void vmx_setup_mce(struct kvm_vcpu *vcpu)
 #ifdef CONFIG_KVM_SMM
 static int vmx_smi_allowed(struct kvm_vcpu *vcpu, bool for_injection)
 {
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
 	/* we need a nested vmexit to enter SMM, postpone if run is pending */
 	if (to_vmx(vcpu)->nested.nested_run_pending)
 		return -EBUSY;
-	return !is_smm(vcpu);
+	return !is_smm(vcpu) && !(vmx->seam_mode && !is_guest_mode(vcpu));
 }
 
 static int vmx_enter_smm(struct kvm_vcpu *vcpu, union kvm_smram *smram)
