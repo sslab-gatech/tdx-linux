@@ -24,7 +24,7 @@ enum seamops_function {
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 {
     struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
-    struct sys_info_table sys_info_table;
+    struct sys_info_table sys_info_table = { 0, };
     u32 eax = 0x1, ebx, ecx, edx;
     int i;
 
@@ -55,7 +55,7 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
     // Allow entire physical memory over 4GB as CMR
 #define _4GB    0x100000000
     sys_info_table.cmr[0].base = _4GB;
-    sys_info_table.cmr[0].size = cpuid_maxphyaddr(vcpu) - _4GB;
+    sys_info_table.cmr[0].size = (1ULL << cpuid_maxphyaddr(vcpu)) - _4GB;
     for (i = 1; i < SYS_INFO_TABLE_NUM_CMRS; i++) {
         sys_info_table.cmr[i].base = 0;
         sys_info_table.cmr[i].size = 0;
@@ -389,7 +389,7 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
 
     unsigned long cr0, cr3, cr4;
-    u64 efer;
+    u64 efer, rflags;
     struct kvm_segment cs = {0,}, ss = {0,}, ds = {0,}, es = {0,}, fs = {0,}, gs = {0,}, tr = {0,};
     struct kvm_segment ldtr = {0,};
     struct desc_ptr gdtr, idtr;
@@ -523,12 +523,13 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     /* 28.5.3 Loading Host RIP, RSP, RFLAGS, and SSP */
     rip = vmcs_read(HOST_RIP);
     rsp = vmcs_read(HOST_RSP);
-    // rflags = X86_EFLAGS_FIXED;
+    rflags = vmx_get_rflags(vcpu) & ~(X86_EFLAGS_CF | X86_EFLAGS_OF | X86_EFLAGS_SF | 
+                                      X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF);
 
     instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
     kvm_rip_write(vcpu, rip - instr_len);
     kvm_rsp_write(vcpu, rsp);
-    // vmx_set_rflags(vcpu, rflags);
+    vmx_set_rflags(vcpu, rflags);
     if (has_cet)
         vmcs_writel(GUEST_SSP, vmcs_read(HOST_SSP));
 
@@ -660,8 +661,9 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
         vmx->in_pseamldr = true;
     } else {
 // TODO: Check TDX Module is loaded
-        vmx_set_rflags(vcpu, X86_EFLAGS_CF | X86_EFLAGS_FIXED);
-        goto exit;
+        if (!kvm_vmx->seam_extend.seam_ready) {
+            return vmx_fail_invalid(vcpu);
+        }
     }
 
     rflags = vmx_get_rflags(vcpu);
