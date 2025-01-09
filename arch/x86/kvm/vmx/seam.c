@@ -91,6 +91,7 @@ void handle_seamextend(struct kvm_vcpu *vcpu)
 static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 {
     u32 exit_ctls = vmcs_read(VM_EXIT_CONTROL);
+    u64 efer;
 
     int has_cet = kvm_cpu_cap_has(X86_FEATURE_SHSTK) && kvm_cpu_cap_has(X86_FEATURE_IBT);
 
@@ -112,8 +113,10 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     }
     if (exit_ctls & VM_EXIT_SAVE_IA32_PAT)
         vmcs_write(GUEST_IA32_PAT_FULL, vmcs_read64(GUEST_IA32_PAT));
-    if (exit_ctls & VM_EXIT_SAVE_IA32_EFER)
-        vmcs_write(GUEST_IA32_EFER_FULL, vmcs_read64(GUEST_IA32_EFER));
+    if (exit_ctls & VM_EXIT_SAVE_IA32_EFER) {
+        kvm_emulate_msr_read(vcpu, MSR_EFER, &efer);
+        vmcs_write(GUEST_IA32_EFER_FULL, efer);
+    }
 // TODO: IA32_BNDCFGS
     printk(KERN_WARNING "[opentdx] do not support setting GUEST_IA32_RTIT_CTL");
     // vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
@@ -164,7 +167,6 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     vmcs_write(GUEST_LDTR_ARBYTE, vmcs_read32(GUEST_LDTR_AR_BYTES));
     vmcs_write(GUEST_LDTR_LIMIT, vmcs_read32(GUEST_LDTR_LIMIT));
     vmcs_write(GUEST_LDTR_BASE, vmcs_readl(GUEST_LDTR_BASE));
-
     vmcs_write(GUEST_TR_SELECTOR, vmcs_read16(GUEST_TR_SELECTOR));
     vmcs_write(GUEST_TR_ARBYTE, vmcs_read32(GUEST_TR_AR_BYTES));
     vmcs_write(GUEST_TR_LIMIT, vmcs_read32(GUEST_TR_LIMIT));
@@ -180,7 +182,7 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     vmcs_write(GUEST_RSP, vmcs_readl(GUEST_RSP));
     vmcs_write(GUEST_RIP, vmcs_readl(GUEST_RIP));
-    vmcs_write(GUEST_RFLAGS, vmcs_readl(GUEST_RFLAGS));
+    vmcs_write(GUEST_RFLAGS, kvm_get_rflags(vcpu));
 
     if (has_cet) {
         vmcs_write(GUEST_SSP, vmcs_readl(GUEST_SSP));
@@ -327,6 +329,11 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     kvm_emulate_msr_write(vcpu, MSR_FS_BASE, vmcs_read(GUEST_FS_BASE));
     kvm_emulate_msr_write(vcpu, MSR_GS_BASE, vmcs_read(GUEST_GS_BASE));
+
+    if (entry_ctls & VM_ENTRY_LOAD_DEBUG_CONTROLS) {
+        vcpu->arch.dr7 = vmcs_read(GUEST_DR7);
+        vmcs_write64(GUEST_IA32_DEBUGCTL, vmcs_read(GUEST_IA32_DEBUGCTLMSR_FULL));
+    }
 
     if (entry_ctls & VM_ENTRY_LOAD_IA32_EFER) {
         kvm_emulate_msr_write(vcpu, MSR_EFER, efer);

@@ -99,14 +99,15 @@ static inline void read_segment_##seg(struct kvm_segment *var, u8 *vmcs)    \
     var->limit = vmcs_read(GUEST_##seg##_LIMIT);    \
     var->selector = vmcs_read(GUEST_##seg##_SELECTOR);  \
     ar = vmcs_read(GUEST_##seg##_ARBYTE);   \
-    var->unusable = (ar >> 16) & 1; \
     var->type = ar & 15;    \
     var->s = (ar >> 4) & 1; \
     var->dpl = (ar >> 5) & 3;   \
-    var->present = !var->unusable;  \
+    var->present = (ar >> 7) & 1;  \
     var->avl = (ar >> 12) & 1;  \
     var->l = (ar >> 13) & 1;    \
+    var->db = (ar >> 14) & 1;   \
     var->g = (ar >> 15) & 1;    \
+    var->unusable = !var->present; \
 }
 
 read_segment_helper(CS)
