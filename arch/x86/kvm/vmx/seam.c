@@ -694,6 +694,8 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     save_guest_state(vcpu, (u8 *) vmcs);
     load_host_state(vcpu, (u8 *) vmcs);
 
+    vcpu->arch.apic->apicv_active = false;
+
     kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(vmx->seam_vmptr), vmcs, 0, PAGE_SIZE);
 
 exit:
@@ -756,6 +758,8 @@ int handle_seamret(struct kvm_vcpu *vcpu)
         vmx->in_pseamldr = false;
         mutex_unlock(&kvm_vmx->p_seamldr_lock);
     }
+
+    vcpu->arch.apic->apicv_active = true;
 
 exit:
     free_page((unsigned long) vmcs);
