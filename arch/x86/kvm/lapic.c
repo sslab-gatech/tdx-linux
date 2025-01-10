@@ -2591,6 +2591,7 @@ void kvm_apic_update_apicv(struct kvm_vcpu *vcpu)
 	}
 	apic->highest_isr_cache = -1;
 }
+EXPORT_SYMBOL_GPL(kvm_apic_update_apicv);
 
 int kvm_alloc_apic_access_page(struct kvm *kvm)
 {

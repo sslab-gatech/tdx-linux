@@ -695,6 +695,8 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     load_host_state(vcpu, (u8 *) vmcs);
 
     vcpu->arch.apic->apicv_active = false;
+    kvm_apic_update_apicv(vcpu);
+    kvm_make_request(KVM_REQ_EVENT, vcpu);
 
     kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(vmx->seam_vmptr), vmcs, 0, PAGE_SIZE);
 
@@ -760,6 +762,7 @@ int handle_seamret(struct kvm_vcpu *vcpu)
     }
 
     vcpu->arch.apic->apicv_active = true;
+    kvm_make_request(KVM_REQ_APICV_UPDATE, vcpu);
 
 exit:
     free_page((unsigned long) vmcs);
