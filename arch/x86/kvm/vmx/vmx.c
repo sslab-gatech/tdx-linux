@@ -2171,6 +2171,11 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_TME_ACTIVATE:
 		msr_info->data = kvm_vmx->msr_ia32_tme_activate;
 		break;
+	case MSR_IA32_XAPIC_DISABLE_STATUS:
+		if (!open_tdx)
+			return 1;
+		msr_info->data = vmx->xapic_disable;
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);
@@ -5006,6 +5011,8 @@ static void vmx_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vmx->msr_ia32_umwait_control = 0;
 	vmx->msr_ia32_bios_se_svn = 0;
 	vmx->msr_ia32_bios_done = 1;
+
+	vmx->xapic_disable = 0;
 
 	vmx->hv_deadline_tsc = -1;
 	kvm_set_cr8(vcpu, 0);
@@ -8553,6 +8560,21 @@ gva_t vmx_get_untagged_addr(struct kvm_vcpu *vcpu, gva_t gva, unsigned int flags
 	return (sign_extend64(gva, lam_bit) & ~BIT_ULL(63)) | (gva & BIT_ULL(63));
 }
 
+/* Return true if APIC is locked to x2APIC but try update to legacy */
+static bool vmx_set_xapic_disable(struct kvm_vcpu *vcpu, u64 apic_base)
+{
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
+	enum lapic_mode new_mode = kvm_apic_mode(apic_base);
+
+	if (new_mode == LAPIC_MODE_X2APIC)
+		vmx->xapic_disable = LEGACY_XAPIC_DISABLED;
+	else if (vmx->xapic_disable & LEGACY_XAPIC_DISABLED)
+		return true;
+
+	return false;
+}
+
 static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -8695,6 +8717,8 @@ static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.vcpu_deliver_sipi_vector = kvm_vcpu_deliver_sipi_vector,
 
 	.get_untagged_addr = vmx_get_untagged_addr,
+
+	.set_xapic_disable = vmx_set_xapic_disable,
 };
 
 static unsigned int vmx_handle_intel_pt_intr(void)
