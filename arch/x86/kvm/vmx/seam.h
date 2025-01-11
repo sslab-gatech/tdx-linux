@@ -51,7 +51,7 @@ struct sys_info_table {
     u32 tot_num_sockets;
     u32 socket_cpuid_table[SYS_INFO_TABLE_SOCKET_CPUID_TABLE_SIZE];
     struct mem_range p_seamldr_range;
-    u8 skip_smrr2_check;
+    u8 smrr2_not_supported;
     u8 tdx_ac;
     u8 reserved0[62];
     struct mem_range cmr[SYS_INFO_TABLE_NUM_CMRS];

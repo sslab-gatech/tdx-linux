@@ -15,6 +15,7 @@
  *   Amit Shah    <amit.shah@qumranet.com>
  *   Ben-Ami Yassour <benami@il.ibm.com>
  */
+#include "asm/msr-index.h"
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/kvm_host.h>
@@ -248,6 +249,12 @@ EXPORT_SYMBOL_GPL(host_xss);
 
 u64 __read_mostly host_arch_capabilities;
 EXPORT_SYMBOL_GPL(host_arch_capabilities);
+
+/*
+ * If open_tdx=1, tdx emulation is supported.
+ */
+bool __read_mostly open_tdx = false;
+EXPORT_SYMBOL_GPL(open_tdx);
 
 const struct _kvm_stats_desc kvm_vm_stats_desc[] = {
 	KVM_GENERIC_VM_STATS(),
@@ -490,10 +497,21 @@ enum lapic_mode kvm_get_apic_mode(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_get_apic_mode);
 
+static bool kvm_get_xapic_disabled(struct kvm_vcpu *vcpu)
+{
+	return !!(vcpu->arch.xapic_disable & LEGACY_XAPIC_DISABLED);
+}
+
 int kvm_set_apic_base(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 {
 	enum lapic_mode old_mode = kvm_get_apic_mode(vcpu);
 	enum lapic_mode new_mode = kvm_apic_mode(msr_info->data);
+
+	if (new_mode == LAPIC_MODE_X2APIC)
+		vcpu->arch.xapic_disable = LEGACY_XAPIC_DISABLED;
+	else if (kvm_get_xapic_disabled(vcpu))
+		return 1;
+
 	u64 reserved_bits = kvm_vcpu_reserved_gpa_bits_raw(vcpu) | 0x2ff |
 		(guest_cpuid_has(vcpu, X86_FEATURE_X2APIC) ? 0 : X2APIC_ENABLE);
 
@@ -1698,6 +1716,9 @@ static u64 kvm_get_arch_capabilities(void)
 
 	if (!boot_cpu_has_bug(X86_BUG_GDS) || gds_ucode_mitigated())
 		data |= ARCH_CAP_GDS_NO;
+
+	if (open_tdx)
+		data |= ARCH_CAP_XAPIC_DISABLE;
 
 	return data;
 }
@@ -3894,6 +3915,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		if (!msr_info->host_initiated)
 			return 1;
 		vcpu->arch.arch_capabilities = data;
+		printk(KERN_WARNING "arch cap set to %llx at %lx\n", data, kvm_rip_read(vcpu));
 		break;
 	case MSR_IA32_PERF_CAPABILITIES:
 		if (!msr_info->host_initiated)
@@ -4443,6 +4465,11 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_APICBASE:
 		msr_info->data = kvm_get_apic_base(vcpu);
+		break;
+	case MSR_IA32_XAPIC_DISABLE_STATUS:
+		if (!open_tdx)
+			return 1;
+		msr_info->data = vcpu->arch.xapic_disable;
 		break;
 	case APIC_BASE_MSR ... APIC_BASE_MSR + 0xff:
 		return kvm_x2apic_msr_read(vcpu, msr_info->index, &msr_info->data);

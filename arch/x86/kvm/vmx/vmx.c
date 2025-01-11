@@ -120,11 +120,7 @@ module_param(enable_ipiv, bool, 0444);
 static bool __read_mostly nested = 1;
 module_param(nested, bool, 0444);
 
-/*
- * If open_tdx=1, tdx emulation is supported.
- */
-static bool __read_mostly open_tdx = 0;
-module_param(open_tdx, bool, S_IRUGO);
+module_param(open_tdx, bool, 0444);
 
 bool __read_mostly enable_pml = 1;
 module_param_named(pml, enable_pml, bool, 0444);
