@@ -2012,8 +2012,14 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		return kvm_get_msr_common(vcpu, msr_info);
 	case MSR_IA32_TSX_CTRL:
 		if (!msr_info->host_initiated &&
-		    !(vcpu->arch.arch_capabilities & ARCH_CAP_TSX_CTRL_MSR))
+		    !(vcpu->arch.arch_capabilities & ARCH_CAP_TSX_CTRL_MSR)) {
+
+			if (open_tdx) {
+				return TSX_CTRL_RTM_DISABLE;
+			}
+
 			return 1;
+		}
 		goto find_uret_msr;
 	case MSR_IA32_UMWAIT_CONTROL:
 		if (!msr_info->host_initiated && !vmx_has_waitpkg(vmx))
@@ -2362,8 +2368,13 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_TSX_CTRL:
 		if (!msr_info->host_initiated &&
-		    !(vcpu->arch.arch_capabilities & ARCH_CAP_TSX_CTRL_MSR))
+		    !(vcpu->arch.arch_capabilities & ARCH_CAP_TSX_CTRL_MSR)) {
+			if (open_tdx) {
+				printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_TSX_CTRL\n", msr_info->data);
+				break; // Just ignore with warning as we do not emulate
+			}
 			return 1;
+		}
 		if (data & ~(TSX_CTRL_RTM_DISABLE | TSX_CTRL_CPUID_CLEAR))
 			return 1;
 		goto find_uret_msr;
