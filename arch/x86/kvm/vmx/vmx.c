@@ -2182,6 +2182,11 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 		msr_info->data = vmx->xapic_disable;
 		break;
+	case MSR_IA32_MISC_PACKAGE_CTLS:
+		if (!open_tdx)
+			return 1;
+		msr_info->data = 0;
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);
@@ -2586,6 +2591,11 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		}
 
 		kvm_vmx->msr_ia32_tme_activate = data | TME_ACT_LOCKED;
+		break;
+	case MSR_IA32_MISC_PACKAGE_CTLS:
+		if (!open_tdx)
+			return 1;
+		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_MISC_PACKAGE_CTLS\n", msr_info->data);
 		break;
 	default:
 	find_uret_msr:
