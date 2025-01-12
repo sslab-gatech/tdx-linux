@@ -8174,6 +8174,7 @@ static __init void vmx_set_cpu_caps(void)
 		kvm_cpu_cap_set(X86_FEATURE_TME);
 		kvm_cpu_cap_set(X86_FEATURE_PCONFIG);
 		kvm_cpu_cap_set(X86_FEATURE_SMX);
+		kvm_cpu_cap_set(X86_FEATURE_PDCM);
 	}
 
 	/* CPUID 0x7 */
@@ -8188,7 +8189,7 @@ static __init void vmx_set_cpu_caps(void)
 		kvm_cpu_cap_check_and_set(X86_FEATURE_DTES64);
 	}
 
-	if (!enable_pmu)
+	if (!enable_pmu && !open_tdx)
 		kvm_cpu_cap_clear(X86_FEATURE_PDCM);
 	kvm_caps.supported_perf_cap = vmx_get_perf_capabilities();
 
