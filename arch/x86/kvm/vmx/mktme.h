@@ -5,6 +5,10 @@
 #include <linux/bits.h>
 #include <linux/kvm_host.h>
 
+#define MSR_IA32_WBINVDP                0x98
+#define MSR_IA32_WBNOINVDP              0x99
+#define NUM_CACHE_BLOCKS                0x1
+
 #define KEYID_BITS  6ULL
 
 #define MSR_IA32_TME_CAPABILITY         0x981
@@ -63,5 +67,8 @@ static inline u64 num_tdx_keyids(u64 msr_tme_activate) {
     bool locked = tme_locked(msr_tme_activate);
     return locked ? (1 << (keyid_bits(msr_tme_activate))) - num_keyids(msr_tme_activate) : 0;
 }
+
+int read_wbinvdp(struct kvm_vcpu *vcpu, struct msr_data *msr_info);
+int write_wbinvdp(struct kvm_vcpu *vcpu);
 
 #endif
