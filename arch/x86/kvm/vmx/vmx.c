@@ -2015,7 +2015,8 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		    !(vcpu->arch.arch_capabilities & ARCH_CAP_TSX_CTRL_MSR)) {
 
 			if (open_tdx) {
-				return TSX_CTRL_RTM_DISABLE;
+				msr_info->data =TSX_CTRL_RTM_DISABLE;
+				break;
 			}
 
 			return 1;
@@ -2150,8 +2151,9 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = vmx->msr_ia32_bios_se_svn;
 		break;
 	case MSR_MTRRcap:
-		msr_info->data = ((open_tdx ? MTRR_SEAMRR_ENABLED : 0) | 
-						  kvm_get_msr_common(vcpu, msr_info));
+		msr_info->data = ((open_tdx ? 
+				(MTRR_SEAMRR_ENABLED | MTRRcap_SMRR | MTRRcap_SMRR_LOCK) : 0) | 
+				kvm_get_msr_common(vcpu, msr_info));
 		break;
 	case MSR_IA32_SGX_DEBUG_MODE:
 		msr_info->data = 0x2; // Always SGX debug mode
@@ -2194,6 +2196,16 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_WBNOINVDP:
 		if (!open_tdx || read_wbinvdp(vcpu, msr_info))
 			return 1;
+		break;
+	case MSR_IA32_SMRR_PHYSBASE:
+		if (!open_tdx)
+			return 1;
+		msr_info->data = 0;
+		break;
+	case MSR_IA32_SMRR_PHYSMASK:
+		if (!open_tdx)
+			return 1;
+		msr_info->data = 0;
 		break;
 	default:
 	find_uret_msr:
@@ -2612,6 +2624,16 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_WBNOINVDP:
 		if (!open_tdx || write_wbinvdp(vcpu))
 			return 1;
+		break;
+	case MSR_IA32_SMRR_PHYSBASE:
+		if (!open_tdx)
+			return 1;
+		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_SMRR_PHYSBASE\n", msr_info->data);
+		break;
+	case MSR_IA32_SMRR_PHYSMASK:
+		if (!open_tdx)
+			return 1;
+		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_SMRR_PHYSMASK\n", msr_info->data);
 		break;
 	default:
 	find_uret_msr:

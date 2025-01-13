@@ -93,6 +93,8 @@
 #define SNB_C1_AUTO_UNDEMOTE		(1UL << 28)
 
 #define MSR_MTRRcap			0x000000fe
+#define MTRRcap_SMRR			BIT(11)
+#define MTRRcap_SMRR_LOCK		BIT(14)
 
 #define MSR_IA32_ARCH_CAPABILITIES	0x0000010a
 #define ARCH_CAP_RDCL_NO		BIT(0)	/* Not susceptible to Meltdown */
@@ -1156,5 +1158,8 @@
 						* disabling x2APIC will cause
 						* a #GP
 						*/
+
+#define MSR_IA32_SMRR_PHYSBASE			0x1F2
+#define MSR_IA32_SMRR_PHYSMASK			0x1F3
 
 #endif /* _ASM_X86_MSR_INDEX_H */
