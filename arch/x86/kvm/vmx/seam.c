@@ -7,6 +7,7 @@
 #include "vmx.h"
 #include "seam.h"
 #include "nested.h"
+#include "mktme.h"
 
 #include "x86.h"
 #include <asm/asm.h>
@@ -55,7 +56,7 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
     // Allow entire physical memory over 4GB as CMR
 #define _4GB    0x100000000
     sys_info_table.cmr[0].base = _4GB;
-    sys_info_table.cmr[0].size = (1ULL << cpuid_maxphyaddr(vcpu)) - _4GB;
+    sys_info_table.cmr[0].size = (1ULL << (cpuid_maxphyaddr(vcpu) - KEYID_BITS)) - _4GB;
     for (i = 1; i < SYS_INFO_TABLE_NUM_CMRS; i++) {
         sys_info_table.cmr[i].base = 0;
         sys_info_table.cmr[i].size = 0;
@@ -777,8 +778,16 @@ static int handle_seamops_capabilities(struct kvm_vcpu *vcpu)
 {
 // TODO
     kvm_rax_write(vcpu, 
-        CAPABILITIES_SEAMDB_CLEAR | CAPABILITIES_SEAMDB_INSERT | 
+        CAPABILITIES_SEAMDB_REPORT |
+        CAPABILITIES_SEAMDB_CLEAR |
+        CAPABILITIES_SEAMDB_INSERT |
         CAPABILITIES_SEAMDB_GETREF | 0x1);
+    return 0;
+}
+
+static int handle_seamops_seamreport(struct kvm_vcpu *vcpu)
+{
+    kvm_rax_write(vcpu, 0x0);
     return 0;
 }
 
@@ -834,7 +843,7 @@ int handle_seamops(struct kvm_vcpu *vcpu)
         err = handle_seamops_capabilities(vcpu);
         break;
     case SEAMREPORT:
-        err = 1;
+        err = handle_seamops_seamreport(vcpu);
         break;
     case SEAMDB_CLEAR:
         err = handle_seamops_seamdb_clear(vcpu);
