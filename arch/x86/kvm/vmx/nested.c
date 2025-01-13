@@ -1540,6 +1540,11 @@ int vmx_get_vmx_msr(struct nested_vmx_msrs *msrs, u32 msr_index, u64 *pdata)
 			msrs->secondary_ctls_low,
 			msrs->secondary_ctls_high);
 		break;
+	case MSR_IA32_VMX_PROCBASED_CTLS3:
+		if (!open_tdx)
+			return 1;
+		*pdata = 0;
+		break;
 	case MSR_IA32_VMX_EPT_VPID_CAP:
 		*pdata = msrs->ept_caps |
 			((u64)msrs->vpid_caps << 32);

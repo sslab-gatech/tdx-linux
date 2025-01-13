@@ -50,7 +50,7 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
     sys_info_table.p_seamldr_range.size = P_SEAMLDR_RANGE_SIZE;
 
     sys_info_table.smrr2_not_supported = 1;
-    sys_info_table.tdx_ac = 0;
+    sys_info_table.tdx_without_integrity = 1;
 
     // Allow entire physical memory over 4GB as CMR
 #define _4GB    0x100000000
