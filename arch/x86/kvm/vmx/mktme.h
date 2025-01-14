@@ -60,12 +60,12 @@ static inline u8 tdx_keyid_bits(u64 data) {
 
 static inline u32 num_keyids(u64 msr_tme_activate) {
     bool locked = tme_locked(msr_tme_activate);
-    return locked ? 1 << (keyid_bits(msr_tme_activate) - tdx_keyid_bits(msr_tme_activate)) : 0;
+    return locked ? (1 << (keyid_bits(msr_tme_activate) - tdx_keyid_bits(msr_tme_activate))) - 1 : 0;
 }
 
 static inline u64 num_tdx_keyids(u64 msr_tme_activate) {
     bool locked = tme_locked(msr_tme_activate);
-    return locked ? (1 << (keyid_bits(msr_tme_activate))) - num_keyids(msr_tme_activate) : 0;
+    return locked ? (1 << (keyid_bits(msr_tme_activate))) - num_keyids(msr_tme_activate) - 1: 0;
 }
 
 int read_wbinvdp(struct kvm_vcpu *vcpu, struct msr_data *msr_info);
