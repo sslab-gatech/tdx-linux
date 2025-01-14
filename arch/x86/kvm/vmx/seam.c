@@ -54,9 +54,9 @@ void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
     sys_info_table.tdx_without_integrity = 1;
 
     // Allow entire physical memory over 4GB as CMR
-#define _4GB    0x100000000
-    sys_info_table.cmr[0].base = _4GB;
-    sys_info_table.cmr[0].size = (1ULL << (cpuid_maxphyaddr(vcpu) - KEYID_BITS)) - _4GB;
+#define _64KB    0x10000
+    sys_info_table.cmr[0].base = _64KB;
+    sys_info_table.cmr[0].size = (1ULL << (cpuid_maxphyaddr(vcpu) - KEYID_BITS)) - _64KB;
     for (i = 1; i < SYS_INFO_TABLE_NUM_CMRS; i++) {
         sys_info_table.cmr[i].base = 0;
         sys_info_table.cmr[i].size = 0;
