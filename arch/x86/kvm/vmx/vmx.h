@@ -17,6 +17,7 @@
 #include "run_flags.h"
 
 #include "seam.h"
+#include "mktme.h"
 
 #define MSR_TYPE_R	1
 #define MSR_TYPE_W	2
@@ -397,6 +398,7 @@ struct kvm_vmx {
 	u64 msr_ia32_tme_capability;
 	u64 msr_ia32_tme_activate;
 
+	mktme_entry_t *mktme_table;
 };
 
 void vmx_vcpu_load_vmcs(struct kvm_vcpu *vcpu, int cpu,

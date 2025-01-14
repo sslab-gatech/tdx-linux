@@ -5417,6 +5417,8 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 	static const char seamcall_bytecode[] = { __SEAMCALL_BYTECODE };
 	static const char seamret_bytecode[] = { __SEAMRET_BYTECODE };
 	static const char seamops_bytecode[] = { __SEAMOPS_BYTECODE };
+	static const char pconfig_bytecode[] = { __PCONFIG_BYTECODE };
+
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct kvm_run *kvm_run = vcpu->run;
 	u32 intr_info, ex_no, error_code;
@@ -5460,6 +5462,8 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 				return handle_seamops(vcpu);
 			else if (memcmp(inst, seamret_bytecode, sizeof(seamret_bytecode)) == 0)
 				return handle_seamret(vcpu);
+			else if (memcmp(inst, pconfig_bytecode, sizeof(pconfig_bytecode)) == 0)
+				return handle_pconfig(vcpu);
 			else
 				return handle_ud(vcpu);
 		} else
@@ -7880,6 +7884,9 @@ static int vmx_vm_init(struct kvm *kvm)
 		TME_CAP_BYPASS_SUPPORTED | TME_CAP_KEYID_BITS | TME_CAP_KEYID_NUM);
 	kvm_vmx->msr_ia32_tme_activate = 0;
 
+	kvm_vmx->mktme_table = (mktme_entry_t *) kzalloc(sizeof(mktme_entry_t) * (1 << KEYID_BITS),
+												GFP_KERNEL);
+
 	return 0;
 }
 
@@ -8572,6 +8579,8 @@ static void vmx_hardware_unsetup(void)
 static void vmx_vm_destroy(struct kvm *kvm)
 {
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
+
+	kfree(kvm_vmx->mktme_table);
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
 }
