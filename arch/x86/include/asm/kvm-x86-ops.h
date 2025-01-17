@@ -139,6 +139,7 @@ KVM_X86_OP(vcpu_deliver_sipi_vector)
 KVM_X86_OP_OPTIONAL_RET0(vcpu_get_apicv_inhibit_reasons);
 KVM_X86_OP_OPTIONAL(get_untagged_addr)
 KVM_X86_OP_OPTIONAL(set_xapic_disable)
+KVM_X86_OP_OPTIONAL(update_keyid_of_pages)
 
 #undef KVM_X86_OP
 #undef KVM_X86_OP_OPTIONAL

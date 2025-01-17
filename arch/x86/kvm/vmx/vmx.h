@@ -399,6 +399,8 @@ struct kvm_vmx {
 	u64 msr_ia32_tme_activate;
 
 	mktme_entry_t *mktme_table;
+	struct xarray keyid_of_pages;
+	atomic_t num_keyed_pages;
 };
 
 void vmx_vcpu_load_vmcs(struct kvm_vcpu *vcpu, int cpu,

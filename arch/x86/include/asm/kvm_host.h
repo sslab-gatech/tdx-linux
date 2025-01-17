@@ -1799,7 +1799,12 @@ struct kvm_x86_ops {
 
 	gva_t (*get_untagged_addr)(struct kvm_vcpu *vcpu, gva_t gva, unsigned int flags);
 
+	/*
+	 * OpenTDX
+	 */
 	bool (*set_xapic_disable)(struct kvm_vcpu *vcpu, u64 apic_base);
+
+	void (*update_keyid_of_pages)(struct kvm_vcpu *vcpu, gpa_t gpa);
 };
 
 struct kvm_x86_nested_ops {

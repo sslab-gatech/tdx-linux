@@ -61,6 +61,10 @@ static inline u8 tdx_keyid_bits(u64 data) {
     return (data >> TME_ACT_TDX_KEYID_BITS_OFFSET) & 0xf;
 }
 
+static inline u32 keyid_mask(u64 data) {
+    return (1 << keyid_bits(data)) - 1;
+}
+
 static inline u32 num_keyids(u64 msr_tme_activate) {
     bool locked = tme_locked(msr_tme_activate);
     return locked ? (1 << (keyid_bits(msr_tme_activate) - tdx_keyid_bits(msr_tme_activate))) - 1 : 0;
@@ -119,6 +123,16 @@ typedef struct mktme_entry {
     // TODO: we need metadata here to track all EPTE accessed with this key_id
 } mktme_entry_t;
 
+typedef struct keyid_of_page {
+    u16 keyid;
+} keyid_of_page_t;
+
+#define KEYID_EMPTY     0
+
+u16 keyid_of(gpa_t gpa, struct kvm_vcpu *vcpu);
+bool has_keyid(gpa_t gpa, struct kvm_vcpu *vcpu);
+bool is_tdx_keyid(u16 keyid, struct kvm_vcpu *vcpu);
+gpa_t gpa_without_keyid(gpa_t gpa, struct kvm_vcpu *vcpu);
 
 int handle_pconfig(struct kvm_vcpu *vcpu);
 

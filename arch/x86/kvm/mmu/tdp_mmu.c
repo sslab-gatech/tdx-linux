@@ -946,7 +946,7 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 {
 	struct kvm_mmu_page *sp = sptep_to_sp(rcu_dereference(iter->sptep));
 	u64 new_spte;
-	int ret = RET_PF_FIXED;
+	int ret = RET_PF_FIXED, r = 1;
 	bool wrprot = false;
 
 	if (WARN_ON_ONCE(sp->role.level != fault->goal_level))
@@ -961,11 +961,18 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 
 	if (new_spte == iter->old_spte)
 		ret = RET_PF_SPURIOUS;
-	else if (tdp_mmu_set_spte_atomic(vcpu->kvm, iter, new_spte))
+	else if ((r = tdp_mmu_set_spte_atomic(vcpu->kvm, iter, new_spte)))
 		return RET_PF_RETRY;
 	else if (is_shadow_present_pte(iter->old_spte) &&
 		 !is_last_spte(iter->old_spte, iter->level))
 		kvm_flush_remote_tlbs_gfn(vcpu->kvm, iter->gfn, iter->level);
+
+	if (r == 0 &&
+		kvm_x86_ops.update_keyid_of_pages &&
+		!is_mmio_spte(new_spte) &&
+		is_last_spte(new_spte, iter->level) &&
+		is_writable_pte(new_spte))
+		static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr);
 
 	/*
 	 * If the page fault was caused by a write but the page is write

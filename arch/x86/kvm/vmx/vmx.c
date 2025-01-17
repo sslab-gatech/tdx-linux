@@ -2601,7 +2601,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 
 		if (keyid_bits(data) > keyid_bits(kvm_vmx->msr_ia32_tme_capability) ||
-			(keyid_bits > 0 && !tme_enabled(data)))
+			(keyid_bits(data) > 0 && !tme_enabled(data)))
 			return 1;
 		else if (tdx_keyid_bits(data) > keyid_bits(data))
 			return 1;
@@ -6004,8 +6004,11 @@ static int handle_task_switch(struct kvm_vcpu *vcpu)
 static int handle_ept_violation(struct kvm_vcpu *vcpu)
 {
 	unsigned long exit_qualification;
+	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
 	gpa_t gpa;
+	gfn_t real_gfn;
 	u64 error_code;
+	u16 keyid;
 
 	exit_qualification = vmx_get_exit_qual(vcpu);
 
@@ -6051,6 +6054,26 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	 */
 	if (unlikely(allow_smaller_maxphyaddr && !kvm_vcpu_is_legal_gpa(vcpu, gpa)))
 		return kvm_emulate_instruction(vcpu, 0);
+
+	keyid = keyid_of(gpa, vcpu);
+	real_gfn = gpa_without_keyid(gpa, vcpu) >> PAGE_SHIFT;
+	if (kvm_vmx->mktme_table[keyid].key_id != keyid) {
+		printk(KERN_WARNING "[opentdx] mktme violation: accessed 0x%llx (keyid: %d) without setting keyid", gpa, keyid);
+		// TODO
+	} else if (is_tdx_keyid(keyid, vcpu)) {
+		if (!to_vmx(vcpu)->seam_mode) {
+			printk(KERN_WARNING "[opentdx] mktme violation: accessed 0x%llx (keyid: %d) from Non-SEAM", gpa, keyid);
+			// TODO
+		} else if ((error_code & (PFERR_USER_MASK | PFERR_FETCH_MASK))) {
+			keyid_of_page_t *keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, real_gfn);
+			if (!keyid_of_page || keyid_of_page->keyid == KEYID_EMPTY) {
+				printk(KERN_WARNING "[opentdx] mktme violation: read access to 0x%llx (keyid: %d) whose TD_OWNER_BIT is cleared", gpa, keyid);
+				// TODO
+			}
+		}
+	} else if (keyid > 0) {
+		printk(KERN_WARNING "[opentdx] mktme violation: access to 0x%llx (keyid: %d) unsupported", gpa, keyid);
+	}
 
 	return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
 }
@@ -7886,6 +7909,8 @@ static int vmx_vm_init(struct kvm *kvm)
 
 	kvm_vmx->mktme_table = (mktme_entry_t *) kzalloc(sizeof(mktme_entry_t) * (1 << KEYID_BITS),
 												GFP_KERNEL);
+	xa_init(&kvm_vmx->keyid_of_pages);
+	atomic_set(&kvm_vmx->num_keyed_pages, 0);
 
 	return 0;
 }
@@ -8579,8 +8604,16 @@ static void vmx_hardware_unsetup(void)
 static void vmx_vm_destroy(struct kvm *kvm)
 {
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
+	keyid_of_page_t *entry;
+	unsigned long idx;
 
 	kfree(kvm_vmx->mktme_table);
+
+	xa_for_each_range(&kvm_vmx->keyid_of_pages, idx, entry, 0,
+		atomic_read(&kvm_vmx->num_keyed_pages) - 1) {
+		kfree(entry);
+	}
+	xa_destroy(&kvm_vmx->keyid_of_pages);
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
 }
@@ -8642,6 +8675,36 @@ static bool vmx_set_xapic_disable(struct kvm_vcpu *vcpu, u64 apic_base)
 		return true;
 
 	return false;
+}
+
+static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa)
+{
+	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+	u16 keyid = keyid_of(gpa, vcpu);
+	gfn_t gfn = gpa_without_keyid(gpa, vcpu) >> PAGE_SHIFT;
+	keyid_of_page_t *keyid_of_page, *old_entry;
+
+	keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, gfn);
+	if (keyid_of_page) {
+		keyid_of_page->keyid = keyid;
+	} else {
+		keyid_of_page = kzalloc(sizeof(keyid_of_page_t), GFP_KERNEL); // TODO: check NULL
+		if (!keyid_of_page) {
+			KVM_BUG_ON(-ENOMEM, vcpu->kvm);
+		}
+
+		keyid_of_page->keyid = keyid;
+
+		old_entry = xa_cmpxchg(&kvm_vmx->keyid_of_pages, gfn, NULL, keyid_of_page,
+						GFP_KERNEL_ACCOUNT);
+		if (old_entry) {
+			printk(KERN_WARNING "[opentdx] race occurred while allocating keyid_of_page at 0x%llx\n", gfn);
+		} else {
+			atomic_inc(&kvm_vmx->num_keyed_pages);
+		}
+	}
+
+	return;
 }
 
 static struct kvm_x86_ops vmx_x86_ops __initdata = {
@@ -8788,6 +8851,7 @@ static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.get_untagged_addr = vmx_get_untagged_addr,
 
 	.set_xapic_disable = vmx_set_xapic_disable,
+	.update_keyid_of_pages = vmx_update_keyid_of_pages,
 };
 
 static unsigned int vmx_handle_intel_pt_intr(void)
