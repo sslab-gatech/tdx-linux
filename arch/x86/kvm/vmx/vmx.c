@@ -242,6 +242,9 @@ static const struct {
 #define L1D_CACHE_ORDER 4
 static void *vmx_l1d_flush_pages;
 
+static u8 zero_page[PAGE_SIZE] __aligned(PAGE_SIZE);
+static u8 cyphertext_page[PAGE_SIZE] __aligned(PAGE_SIZE);
+
 static int vmx_setup_l1d_flush(enum vmx_l1d_flush_state l1tf)
 {
 	struct page *page;
@@ -3021,6 +3024,9 @@ static int vmx_hardware_enable(void)
 
 	if (enable_ept)
 		ept_sync_global();
+
+	memset(zero_page, 0, PAGE_SIZE);
+	memset(cyphertext_page, 0x05, PAGE_SIZE);
 
 	return 0;
 }
@@ -6005,6 +6011,8 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 {
 	unsigned long exit_qualification;
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	keyid_of_page_t *keyid_of_page;
 	gpa_t gpa;
 	gfn_t real_gfn;
 	u64 error_code;
@@ -6057,18 +6065,19 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 
 	keyid = keyid_of(gpa, vcpu);
 	real_gfn = gpa_without_keyid(gpa, vcpu) >> PAGE_SHIFT;
+	keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, real_gfn);
+
 	if (kvm_vmx->mktme_table[keyid].key_id != keyid) {
 		printk(KERN_WARNING "[opentdx] mktme violation: accessed 0x%llx (keyid: %d) without setting keyid", gpa, keyid);
-		// TODO
+		// TODO: abort
 	} else if (is_tdx_keyid(keyid, vcpu)) {
-		if (!to_vmx(vcpu)->seam_mode) {
+		if (!vmx->seam_mode) {
 			printk(KERN_WARNING "[opentdx] mktme violation: accessed 0x%llx (keyid: %d) from Non-SEAM", gpa, keyid);
-			// TODO
+			// TODO: abort
 		} else if ((error_code & (PFERR_USER_MASK | PFERR_FETCH_MASK))) {
-			keyid_of_page_t *keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, real_gfn);
 			if (!keyid_of_page || keyid_of_page->keyid == KEYID_EMPTY) {
 				printk(KERN_WARNING "[opentdx] mktme violation: read access to 0x%llx (keyid: %d) whose TD_OWNER_BIT is cleared", gpa, keyid);
-				// TODO
+				// TODO: abort
 			}
 		}
 	} else if (keyid > 0) {
@@ -8604,15 +8613,23 @@ static void vmx_hardware_unsetup(void)
 static void vmx_vm_destroy(struct kvm *kvm)
 {
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
-	keyid_of_page_t *entry;
+	keyid_of_page_t *keyid_of_page;
+	sptep_of_page_t *sptep_of_page, *tmp;
 	unsigned long idx;
 
 	kfree(kvm_vmx->mktme_table);
 
-	xa_for_each_range(&kvm_vmx->keyid_of_pages, idx, entry, 0,
+	xa_for_each_range(&kvm_vmx->keyid_of_pages, idx, keyid_of_page, 0,
 		atomic_read(&kvm_vmx->num_keyed_pages) - 1) {
-		kfree(entry);
+
+		list_for_each_entry_safe(sptep_of_page, tmp, &keyid_of_page->page_list, node) {
+			list_del(&sptep_of_page->node);
+			kfree(sptep_of_page);
+		}
+
+		kfree(keyid_of_page);
 	}
+	atomic_set(&kvm_vmx->num_keyed_pages, 0);
 	xa_destroy(&kvm_vmx->keyid_of_pages);
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
@@ -8677,12 +8694,15 @@ static bool vmx_set_xapic_disable(struct kvm_vcpu *vcpu, u64 apic_base)
 	return false;
 }
 
-static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa)
+static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa, u64 *sptep)
 {
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
 	u16 keyid = keyid_of(gpa, vcpu);
+	u64 new_spte, old_spte = *sptep;
 	gfn_t gfn = gpa_without_keyid(gpa, vcpu) >> PAGE_SHIFT;
 	keyid_of_page_t *keyid_of_page, *old_entry;
+	sptep_of_page_t *sptep_of_page;
+	bool spte_updated = false;
 
 	keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, gfn);
 	if (keyid_of_page) {
@@ -8694,6 +8714,7 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa)
 		}
 
 		keyid_of_page->keyid = keyid;
+		INIT_LIST_HEAD(&keyid_of_page->page_list);
 
 		old_entry = xa_cmpxchg(&kvm_vmx->keyid_of_pages, gfn, NULL, keyid_of_page,
 						GFP_KERNEL_ACCOUNT);
@@ -8703,6 +8724,47 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa)
 			atomic_inc(&kvm_vmx->num_keyed_pages);
 		}
 	}
+
+	// TODO: Do we need lock for this list?
+	list_for_each_entry(sptep_of_page, &keyid_of_page->page_list, node) {
+		if (sptep_of_page->keyid == keyid) {
+			sptep_of_page->sptep = sptep;
+			goto found;
+		}
+	}
+
+	sptep_of_page = kzalloc(sizeof(sptep_of_page_t), GFP_KERNEL);
+	if (!sptep_of_page) {
+		KVM_BUG_ON(-ENOMEM, vcpu->kvm);
+	}
+
+	sptep_of_page->keyid = keyid;
+	sptep_of_page->sptep = sptep;
+	list_add(&sptep_of_page->node, &keyid_of_page->page_list);
+
+found:
+	list_for_each_entry(sptep_of_page, &keyid_of_page->page_list, node) {
+		if (sptep_of_page->keyid == keyid) {
+			continue;
+		} else {
+			if (is_tdx_keyid(sptep_of_page->keyid, vcpu)) {
+			new_spte = (__pa(cyphertext_page) & PAGE_MASK);
+			} else {
+			new_spte = (__pa(zero_page) & PAGE_MASK);
+			}
+			new_spte |= (old_spte & ~PAGE_MASK);
+			new_spte &= ~PT_WRITABLE_MASK; // to detect write
+
+			if (!try_cmpxchg64(sptep, &old_spte, new_spte)) {
+				printk(KERN_WARNING "[opentdx] failed to exchange sptep");
+			}
+
+			spte_updated = true;
+		}
+	}
+
+	if (spte_updated)
+		vmx_flush_tlb_all(vcpu);
 
 	return;
 }

@@ -125,7 +125,14 @@ typedef struct mktme_entry {
 
 typedef struct keyid_of_page {
     u16 keyid;
+    struct list_head page_list;
 } keyid_of_page_t;
+
+typedef struct sptep_of_page {
+    u16 keyid;
+    u64 *sptep;
+    struct list_head node;
+} sptep_of_page_t;
 
 #define KEYID_EMPTY     0
 

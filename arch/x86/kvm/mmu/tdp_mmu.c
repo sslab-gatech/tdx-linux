@@ -972,7 +972,8 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 		!is_mmio_spte(new_spte) &&
 		is_last_spte(new_spte, iter->level) &&
 		is_writable_pte(new_spte))
-		static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr);
+		static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, 
+													rcu_dereference(iter->sptep));
 
 	/*
 	 * If the page fault was caused by a write but the page is write

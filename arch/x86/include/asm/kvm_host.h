@@ -1804,7 +1804,7 @@ struct kvm_x86_ops {
 	 */
 	bool (*set_xapic_disable)(struct kvm_vcpu *vcpu, u64 apic_base);
 
-	void (*update_keyid_of_pages)(struct kvm_vcpu *vcpu, gpa_t gpa);
+	void (*update_keyid_of_pages)(struct kvm_vcpu *vcpu, gpa_t gpa, u64 *sptep);
 };
 
 struct kvm_x86_nested_ops {
