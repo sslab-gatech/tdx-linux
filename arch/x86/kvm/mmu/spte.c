@@ -45,6 +45,8 @@ u64 __read_mostly shadow_nonpresent_or_rsvd_lower_gfn_mask;
 
 u8 __read_mostly shadow_phys_bits;
 
+EXPORT_SYMBOL_GPL(shadow_mmu_writable_mask);
+
 void __init kvm_mmu_spte_module_init(void)
 {
 	/*

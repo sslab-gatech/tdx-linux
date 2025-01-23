@@ -247,6 +247,9 @@ struct kvm_page_fault {
 	 * is changing its own translation in the guest page tables.
 	 */
 	bool write_fault_to_shadow_pgtable;
+
+	/* MKTME keyid if set in gpa */
+	u16 keyid;
 };
 
 int kvm_tdp_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault);
@@ -282,8 +285,17 @@ enum {
 static inline int kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 					u32 err, bool prefetch, int *emulation_type)
 {
+	gpa_t addr = cr2_or_gpa;
+	u16 keyid = 0;
+	u8 max_level = KVM_MAX_HUGEPAGE_LEVEL;
+	if (kvm_x86_ops.get_keyid_of) {
+		keyid = kvm_x86_ops.get_keyid_of(addr, vcpu);
+		addr = kvm_x86_ops.get_gpa_without_keyid(addr, vcpu);
+		max_level = PG_LEVEL_4K; // Do not use huge pages for MKTME pages
+	}
+
 	struct kvm_page_fault fault = {
-		.addr = cr2_or_gpa,
+		.addr = addr,
 		.error_code = err,
 		.exec = err & PFERR_FETCH_MASK,
 		.write = err & PFERR_WRITE_MASK,
@@ -295,10 +307,11 @@ static inline int kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 		.nx_huge_page_workaround_enabled =
 			is_nx_huge_page_enabled(vcpu->kvm),
 
-		.max_level = KVM_MAX_HUGEPAGE_LEVEL,
+		.max_level = max_level,
 		.req_level = PG_LEVEL_4K,
 		.goal_level = PG_LEVEL_4K,
-		.is_private = kvm_mem_is_private(vcpu->kvm, cr2_or_gpa >> PAGE_SHIFT),
+		.is_private = kvm_mem_is_private(vcpu->kvm, addr >> PAGE_SHIFT),
+		.keyid = keyid,
 	};
 	int r;
 

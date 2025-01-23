@@ -3401,7 +3401,7 @@ static bool fast_pf_fix_direct_spte(struct kvm_vcpu *vcpu,
 		mark_page_dirty_in_slot(vcpu->kvm, fault->slot, fault->gfn);
 
 		if (kvm_x86_ops.update_keyid_of_pages)
-			static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, sptep);
+			static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, fault->keyid, sptep);
 	}
 
 	return true;
@@ -3452,6 +3452,7 @@ static int fast_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 	u64 spte;
 	u64 *sptep;
 	uint retry_count = 0;
+	gpa_t addr;
 
 	if (!page_fault_can_be_fast(fault))
 		return ret;
@@ -3461,9 +3462,13 @@ static int fast_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 	do {
 		u64 new_spte;
 
-		if (tdp_mmu_enabled)
-			sptep = kvm_tdp_mmu_fast_pf_get_last_sptep(vcpu, fault->addr, &spte);
-		else
+		if (tdp_mmu_enabled) {
+			addr = fault->addr;
+			if (kvm_x86_ops.get_gpa_with_keyid) {
+				addr = kvm_x86_ops.get_gpa_with_keyid(addr, fault->keyid, vcpu);
+			}
+			sptep = kvm_tdp_mmu_fast_pf_get_last_sptep(vcpu, addr, &spte);
+		} else
 			sptep = fast_pf_get_last_sptep(vcpu, fault->addr, &spte);
 
 		/*

@@ -63,9 +63,17 @@ bool is_tdx_keyid(u16 keyid, struct kvm_vcpu *vcpu)
 gpa_t gpa_without_keyid(gpa_t gpa, struct kvm_vcpu *vcpu)
 {
     u64 tme_activate = to_kvm_vmx(vcpu->kvm)->msr_ia32_tme_activate;
-    gpa_t mask = (1ULL << (vcpu->arch.maxphyaddr - keyid_bits(tme_activate)));
+    gpa_t mask = (1ULL << (vcpu->arch.maxphyaddr - keyid_bits(tme_activate))) - 1;
 
     return gpa & mask;
+}
+
+gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm_vcpu *vcpu)
+{
+    u64 tme_activate = to_kvm_vmx(vcpu->kvm)->msr_ia32_tme_activate;
+    gpa_t mask = (((u64) keyid) << (vcpu->arch.maxphyaddr - keyid_bits(tme_activate)));
+
+    return gpa | mask;
 }
 
 static int handle_pconfig_mktme_key_program(struct kvm_vcpu *vcpu, gva_t rbx)

@@ -243,7 +243,7 @@ static const struct {
 static void *vmx_l1d_flush_pages;
 
 static u8 zero_page[PAGE_SIZE] __aligned(PAGE_SIZE);
-static u8 cyphertext_page[PAGE_SIZE] __aligned(PAGE_SIZE);
+static u8 ciphertext_page[PAGE_SIZE] __aligned(PAGE_SIZE);
 
 static int vmx_setup_l1d_flush(enum vmx_l1d_flush_state l1tf)
 {
@@ -3026,7 +3026,7 @@ static int vmx_hardware_enable(void)
 		ept_sync_global();
 
 	memset(zero_page, 0, PAGE_SIZE);
-	memset(cyphertext_page, 0x05, PAGE_SIZE);
+	memset(ciphertext_page, 0x05, PAGE_SIZE);
 
 	return 0;
 }
@@ -8694,12 +8694,14 @@ static bool vmx_set_xapic_disable(struct kvm_vcpu *vcpu, u64 apic_base)
 	return false;
 }
 
-static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa, u64 *sptep)
+static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa, 
+										u16 keyid, u64 *sptep)
 {
+	extern u64 shadow_mmu_writable_mask;
+
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
-	u16 keyid = keyid_of(gpa, vcpu);
-	u64 new_spte, old_spte = *sptep;
-	gfn_t gfn = gpa_without_keyid(gpa, vcpu) >> PAGE_SHIFT;
+	u64 new_spte, old_spte;
+	gfn_t gfn = gpa >> PAGE_SHIFT;
 	keyid_of_page_t *keyid_of_page, *old_entry;
 	sptep_of_page_t *sptep_of_page;
 	bool spte_updated = false;
@@ -8711,6 +8713,8 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa, u64 *spt
 		keyid_of_page = kzalloc(sizeof(keyid_of_page_t), GFP_KERNEL); // TODO: check NULL
 		if (!keyid_of_page) {
 			KVM_BUG_ON(-ENOMEM, vcpu->kvm);
+
+			BUG();
 		}
 
 		keyid_of_page->keyid = keyid;
@@ -8720,6 +8724,8 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa, u64 *spt
 						GFP_KERNEL_ACCOUNT);
 		if (old_entry) {
 			printk(KERN_WARNING "[opentdx] race occurred while allocating keyid_of_page at 0x%llx\n", gfn);
+
+			BUG();
 		} else {
 			atomic_inc(&kvm_vmx->num_keyed_pages);
 		}
@@ -8736,6 +8742,8 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa, u64 *spt
 	sptep_of_page = kzalloc(sizeof(sptep_of_page_t), GFP_KERNEL);
 	if (!sptep_of_page) {
 		KVM_BUG_ON(-ENOMEM, vcpu->kvm);
+
+		BUG();
 	}
 
 	sptep_of_page->keyid = keyid;
@@ -8747,16 +8755,30 @@ found:
 		if (sptep_of_page->keyid == keyid) {
 			continue;
 		} else {
+			old_spte = *sptep_of_page->sptep;
 			if (is_tdx_keyid(sptep_of_page->keyid, vcpu)) {
-			new_spte = (__pa(cyphertext_page) & PAGE_MASK);
+				new_spte = (__pa(ciphertext_page) & PAGE_MASK);
 			} else {
-			new_spte = (__pa(zero_page) & PAGE_MASK);
+				new_spte = (__pa(zero_page) & PAGE_MASK);
 			}
 			new_spte |= (old_spte & ~PAGE_MASK);
-			new_spte &= ~PT_WRITABLE_MASK; // to detect write
 
-			if (!try_cmpxchg64(sptep, &old_spte, new_spte)) {
+			/*
+			 * All invalid access encrypted memory should be not handle by fast_page_fault
+			 * Consider following case:
+			 * 	1. GFN P write accessed (with or without key X)
+			 *	2. GFN P' (aliased to GFN P) write accessed with key Y
+			 *		- In this case GFN P will mapped to (read-only) zero page (or ciphertext page)
+			 *	3. GFN P write accessed again
+			 *		- Allowing fast fault handling will just make ciphertext page writable,
+			 *		  but the actual address must be updated to point real page
+			 */
+			new_spte &= ~(shadow_mmu_writable_mask | PT_WRITABLE_MASK); // to detect write
+
+			if (!try_cmpxchg64(sptep_of_page->sptep, &old_spte, new_spte)) {
 				printk(KERN_WARNING "[opentdx] failed to exchange sptep");
+
+				BUG();
 			}
 
 			spte_updated = true;
@@ -8913,6 +8935,9 @@ static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.get_untagged_addr = vmx_get_untagged_addr,
 
 	.set_xapic_disable = vmx_set_xapic_disable,
+	.get_keyid_of = keyid_of,
+	.get_gpa_without_keyid = gpa_without_keyid,
+	.get_gpa_with_keyid = gpa_with_keyid,
 	.update_keyid_of_pages = vmx_update_keyid_of_pages,
 };
 

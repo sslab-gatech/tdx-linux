@@ -140,6 +140,7 @@ u16 keyid_of(gpa_t gpa, struct kvm_vcpu *vcpu);
 bool has_keyid(gpa_t gpa, struct kvm_vcpu *vcpu);
 bool is_tdx_keyid(u16 keyid, struct kvm_vcpu *vcpu);
 gpa_t gpa_without_keyid(gpa_t gpa, struct kvm_vcpu *vcpu);
+gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm_vcpu *vcpu);
 
 int handle_pconfig(struct kvm_vcpu *vcpu);
 

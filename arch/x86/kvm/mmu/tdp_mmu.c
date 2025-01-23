@@ -434,7 +434,7 @@ static void handle_changed_spte(struct kvm *kvm, int as_id, gfn_t gfn,
 		       "different PFN!\n"
 		       "as_id: %d gfn: %llx old_spte: %llx new_spte: %llx level: %d",
 		       as_id, gfn, old_spte, new_spte, level);
-
+		pr_err("This may be due to the OpenTDX (i.e., zero page to some other)\n");
 		/*
 		 * Crash the host to prevent error propagation and guest data
 		 * corruption.
@@ -972,7 +972,7 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 		!is_mmio_spte(new_spte) &&
 		is_last_spte(new_spte, iter->level) &&
 		is_writable_pte(new_spte))
-		static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, 
+		static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, fault->keyid,
 													rcu_dereference(iter->sptep));
 
 	/*
@@ -1043,6 +1043,8 @@ int kvm_tdp_mmu_map(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 	struct kvm *kvm = vcpu->kvm;
 	struct tdp_iter iter;
 	struct kvm_mmu_page *sp;
+	gpa_t gpa = fault->addr;
+	gfn_t gfn = fault->gfn;
 	int ret = RET_PF_RETRY;
 
 	kvm_mmu_hugepage_adjust(vcpu, fault);
@@ -1051,7 +1053,12 @@ int kvm_tdp_mmu_map(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 
 	rcu_read_lock();
 
-	tdp_mmu_for_each_pte(iter, mmu, fault->gfn, fault->gfn + 1) {
+	if (kvm_x86_ops.get_gpa_with_keyid) {
+		gpa = kvm_x86_ops.get_gpa_with_keyid(gpa, fault->keyid, vcpu);
+		gfn = gpa >> PAGE_SHIFT;
+	}
+
+	tdp_mmu_for_each_pte(iter, mmu, gfn, gfn + 1) {
 		int r;
 
 		if (fault->nx_huge_page_workaround_enabled)
