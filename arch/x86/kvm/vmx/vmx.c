@@ -6069,15 +6069,21 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 
 	if (kvm_vmx->mktme_table[keyid].key_id != keyid) {
 		printk(KERN_WARNING "[opentdx] mktme violation: accessed 0x%llx (keyid: %d) without setting keyid", gpa, keyid);
+
 		// TODO: abort
+		BUG();
 	} else if (is_tdx_keyid(keyid, vcpu)) {
 		if (!vmx->seam_mode) {
 			printk(KERN_WARNING "[opentdx] mktme violation: accessed 0x%llx (keyid: %d) from Non-SEAM", gpa, keyid);
+
 			// TODO: abort
+			BUG();
 		} else if ((error_code & (PFERR_USER_MASK | PFERR_FETCH_MASK))) {
 			if (!keyid_of_page || keyid_of_page->keyid == KEYID_EMPTY) {
 				printk(KERN_WARNING "[opentdx] mktme violation: read access to 0x%llx (keyid: %d) whose TD_OWNER_BIT is cleared", gpa, keyid);
+
 				// TODO: abort
+				BUG();
 			}
 		}
 	} else if (keyid > 0) {
