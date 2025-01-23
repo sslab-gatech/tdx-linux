@@ -8633,6 +8633,23 @@ static void vmx_vm_destroy(struct kvm *kvm)
 	xa_destroy(&kvm_vmx->keyid_of_pages);
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
+
+	void *test_page = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	memset(test_page, 0, PAGE_SIZE);
+	if (memcmp(zero_page, test_page, PAGE_SIZE) != 0) {
+		printk(KERN_WARNING "[opentdx] panic: zero_page overwritten\n");
+
+		BUG();
+	}
+
+	memset(test_page, 0x05, PAGE_SIZE);
+	if (memcmp(ciphertext_page, test_page, PAGE_SIZE) != 0) {
+		printk(KERN_WARNING "[opentdx] panic: ciphertext_page overwritten\n");
+
+		BUG();
+	}
+
+	kfree(test_page);
 }
 
 /*
