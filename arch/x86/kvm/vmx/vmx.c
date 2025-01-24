@@ -8723,15 +8723,22 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa,
 	extern u64 shadow_mmu_writable_mask;
 
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+	u16 old_keyid;
 	u64 new_spte, old_spte;
 	gfn_t gfn = gpa >> PAGE_SHIFT;
 	keyid_of_page_t *keyid_of_page, *old_entry;
 	sptep_of_page_t *sptep_of_page;
 	bool spte_updated = false;
 
+	// TODO: Need lock here (kernel really panic)
 	keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, gfn);
 	if (keyid_of_page) {
-		keyid_of_page->keyid = keyid;
+		old_keyid = keyid_of_page->keyid;
+		if (!try_cmpxchg(&keyid_of_page->keyid, &old_keyid, keyid)) {
+			printk(KERN_WARNING "[opentdx] race occurred while updating keyid of 0x%llx\n", gfn);
+
+			BUG();
+		}
 	} else {
 		keyid_of_page = kzalloc(sizeof(keyid_of_page_t), GFP_KERNEL); // TODO: check NULL
 		if (!keyid_of_page) {
@@ -8743,12 +8750,24 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa,
 		keyid_of_page->keyid = keyid;
 		INIT_LIST_HEAD(&keyid_of_page->page_list);
 
+		/* Synchronization done by xa_cmpxchg */
 		old_entry = xa_cmpxchg(&kvm_vmx->keyid_of_pages, gfn, NULL, keyid_of_page,
 						GFP_KERNEL_ACCOUNT);
 		if (old_entry) {
-			printk(KERN_WARNING "[opentdx] race occurred while allocating keyid_of_page at 0x%llx\n", gfn);
+			if (old_entry->keyid != keyid) {
+				printk(KERN_WARNING "[opentdx] race occurred while allocating keyid_of_page at 0x%llx\n", gfn);
 
-			BUG();
+				BUG();
+			} else {
+				/* This means another thread already allocated the same keyid_of_page 
+				 * Just free ours and return as the other will update sptep_of_page
+				 * 
+				 * The new sptep_of_page updated by others must have the same sptep as this one
+				 * It is kvm's bug to assign different sptep for the same gfn
+				 */
+				kfree(keyid_of_page);
+				return;
+			}
 		} else {
 			atomic_inc(&kvm_vmx->num_keyed_pages);
 		}
@@ -8956,12 +8975,6 @@ static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.vcpu_deliver_sipi_vector = kvm_vcpu_deliver_sipi_vector,
 
 	.get_untagged_addr = vmx_get_untagged_addr,
-
-	.set_xapic_disable = vmx_set_xapic_disable,
-	.get_keyid_of = keyid_of,
-	.get_gpa_without_keyid = gpa_without_keyid,
-	.get_gpa_with_keyid = gpa_with_keyid,
-	.update_keyid_of_pages = vmx_update_keyid_of_pages,
 };
 
 static unsigned int vmx_handle_intel_pt_intr(void)
@@ -9219,6 +9232,12 @@ static __init int hardware_setup(void)
 
 			return -EINVAL;
 		}
+
+		vmx_x86_ops.set_xapic_disable = vmx_set_xapic_disable,
+		vmx_x86_ops.get_keyid_of = keyid_of;
+		vmx_x86_ops.get_gpa_without_keyid = gpa_without_keyid;
+		vmx_x86_ops.get_gpa_with_keyid = gpa_with_keyid;
+		vmx_x86_ops.update_keyid_of_pages = vmx_update_keyid_of_pages;
 
 		r = seam_vmx_hardware_setup(kvm_vmx_exit_handlers);
 		if (r)
