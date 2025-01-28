@@ -428,13 +428,13 @@ static void handle_changed_spte(struct kvm *kvm, int as_id, gfn_t gfn,
 	 * changed, or the SPTE should be zeroed, and the TLBs flushed by the
 	 * thread before replacement.
 	 */
-	if (was_leaf && is_leaf && pfn_changed) {
+	if (was_leaf && is_leaf && pfn_changed && !(old_spte & shadow_opentdx_reserved_mask)) {
 		pr_err("Invalid SPTE change: cannot replace a present leaf\n"
 		       "SPTE with another present leaf SPTE mapping a\n"
 		       "different PFN!\n"
 		       "as_id: %d gfn: %llx old_spte: %llx new_spte: %llx level: %d",
 		       as_id, gfn, old_spte, new_spte, level);
-		pr_err("This may be due to the OpenTDX (i.e., zero page to some other)\n");
+
 		/*
 		 * Crash the host to prevent error propagation and guest data
 		 * corruption.
@@ -946,7 +946,7 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 {
 	struct kvm_mmu_page *sp = sptep_to_sp(rcu_dereference(iter->sptep));
 	u64 new_spte;
-	int ret = RET_PF_FIXED, r = 1;
+	int ret = RET_PF_FIXED;
 	bool wrprot = false;
 
 	if (WARN_ON_ONCE(sp->role.level != fault->goal_level))
@@ -961,19 +961,20 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 
 	if (new_spte == iter->old_spte)
 		ret = RET_PF_SPURIOUS;
-	else if ((r = tdp_mmu_set_spte_atomic(vcpu->kvm, iter, new_spte)))
-		return RET_PF_RETRY;
-	else if (is_shadow_present_pte(iter->old_spte) &&
-		 !is_last_spte(iter->old_spte, iter->level))
-		kvm_flush_remote_tlbs_gfn(vcpu->kvm, iter->gfn, iter->level);
-
-	if (r == 0 &&
-		kvm_x86_ops.update_keyid_of_pages &&
-		!is_mmio_spte(new_spte) &&
-		is_last_spte(new_spte, iter->level) &&
-		is_writable_pte(new_spte))
-		static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, fault->keyid,
+	else {
+		if (kvm_x86_ops.update_keyid_of_pages &&
+			!is_mmio_spte(new_spte) &&
+			is_last_spte(new_spte, iter->level) &&
+			is_writable_pte(new_spte))
+			static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, fault->keyid,
 													rcu_dereference(iter->sptep));
+
+		if (tdp_mmu_set_spte_atomic(vcpu->kvm, iter, new_spte))
+			return RET_PF_RETRY;
+		else if (is_shadow_present_pte(iter->old_spte) &&
+		 	!is_last_spte(iter->old_spte, iter->level))
+			kvm_flush_remote_tlbs_gfn(vcpu->kvm, iter->gfn, iter->level);
+	}
 
 	/*
 	 * If the page fault was caused by a write but the page is write

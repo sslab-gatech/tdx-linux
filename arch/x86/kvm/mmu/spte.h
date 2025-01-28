@@ -163,6 +163,7 @@ extern u64 __read_mostly shadow_present_mask;
 extern u64 __read_mostly shadow_memtype_mask;
 extern u64 __read_mostly shadow_me_value;
 extern u64 __read_mostly shadow_me_mask;
+extern u64 __read_mostly shadow_opentdx_reserved_mask;
 
 /*
  * SPTEs in MMUs without A/D bits are marked with SPTE_TDP_AD_DISABLED;

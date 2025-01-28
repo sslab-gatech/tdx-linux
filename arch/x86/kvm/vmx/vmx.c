@@ -8721,6 +8721,7 @@ static void vmx_update_keyid_of_pages(struct kvm_vcpu *vcpu, gpa_t gpa,
 										u16 keyid, u64 *sptep)
 {
 	extern u64 shadow_mmu_writable_mask;
+	extern u64 shadow_opentdx_reserved_mask;
 
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
 	u16 old_keyid;
@@ -8816,6 +8817,7 @@ found:
 			 *		  but the actual address must be updated to point real page
 			 */
 			new_spte &= ~(shadow_mmu_writable_mask | PT_WRITABLE_MASK); // to detect write
+			new_spte |= shadow_opentdx_reserved_mask; // Use ignored 59th bit to avoid pfn change check
 
 			if (!try_cmpxchg64(sptep_of_page->sptep, &old_spte, new_spte)) {
 				printk(KERN_WARNING "[opentdx] failed to exchange sptep");

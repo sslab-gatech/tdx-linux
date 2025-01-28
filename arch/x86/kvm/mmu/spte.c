@@ -39,6 +39,7 @@ u64 __read_mostly shadow_memtype_mask;
 u64 __read_mostly shadow_me_value;
 u64 __read_mostly shadow_me_mask;
 u64 __read_mostly shadow_acc_track_mask;
+u64 __read_mostly shadow_opentdx_reserved_mask;
 
 u64 __read_mostly shadow_nonpresent_or_rsvd_mask;
 u64 __read_mostly shadow_nonpresent_or_rsvd_lower_gfn_mask;
@@ -46,6 +47,7 @@ u64 __read_mostly shadow_nonpresent_or_rsvd_lower_gfn_mask;
 u8 __read_mostly shadow_phys_bits;
 
 EXPORT_SYMBOL_GPL(shadow_mmu_writable_mask);
+EXPORT_SYMBOL_GPL(shadow_opentdx_reserved_mask);
 
 void __init kvm_mmu_spte_module_init(void)
 {
@@ -442,6 +444,7 @@ void kvm_mmu_set_ept_masks(bool has_ad_bits, bool has_exec_only)
 	shadow_acc_track_mask	= VMX_EPT_RWX_MASK;
 	shadow_host_writable_mask = EPT_SPTE_HOST_WRITABLE;
 	shadow_mmu_writable_mask  = EPT_SPTE_MMU_WRITABLE;
+	shadow_opentdx_reserved_mask = BIT_ULL(59);
 
 	/*
 	 * EPT Misconfigurations are generated if the value of bits 2:0
