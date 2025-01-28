@@ -3397,12 +3397,8 @@ static bool fast_pf_fix_direct_spte(struct kvm_vcpu *vcpu,
 	if (!try_cmpxchg64(sptep, &old_spte, new_spte))
 		return false;
 
-	if (is_writable_pte(new_spte) && !is_writable_pte(old_spte)) {
+	if (is_writable_pte(new_spte) && !is_writable_pte(old_spte))
 		mark_page_dirty_in_slot(vcpu->kvm, fault->slot, fault->gfn);
-
-		if (kvm_x86_ops.update_keyid_of_pages)
-			static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, fault->keyid, sptep);
-	}
 
 	return true;
 }
