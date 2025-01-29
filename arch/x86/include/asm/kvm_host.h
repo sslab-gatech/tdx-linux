@@ -1803,9 +1803,9 @@ struct kvm_x86_ops {
 	 * OpenTDX
 	 */
 	bool (*set_xapic_disable)(struct kvm_vcpu *vcpu, u64 apic_base);
-	u16 (*get_keyid_of)(gpa_t gpa, struct kvm_vcpu *vcpu);
-	gpa_t (*get_gpa_without_keyid)(gpa_t gpa, struct kvm_vcpu *vcpu);
-	gpa_t (*get_gpa_with_keyid)(gpa_t gpa, u16 keyid, struct kvm_vcpu *vcpu);
+	u16 (*get_keyid_of)(gpa_t gpa, struct kvm *kvm);
+	gpa_t (*get_gpa_without_keyid)(gpa_t gpa, struct kvm *kvm);
+	gpa_t (*get_gpa_with_keyid)(gpa_t gpa, u16 keyid, struct kvm *kvm);
 	void (*update_keyid_of_pages)(struct kvm_vcpu *vcpu, gpa_t gpa, u16 keyid, u64 *sptep);
 };
 

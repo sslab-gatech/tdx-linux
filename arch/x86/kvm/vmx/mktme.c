@@ -6,6 +6,8 @@
 
 #include "x86.h"
 
+extern int max_phyaddr_bits;
+
 int read_wbinvdp(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -36,42 +38,42 @@ int write_wbinvdp(struct kvm_vcpu *vcpu)
     return kvm_emulate_wbinvd(vcpu);
 }
 
-u16 keyid_of(gpa_t gpa, struct kvm_vcpu *vcpu)
+u16 keyid_of(gpa_t gpa, struct kvm *kvm)
 {
-    u64 tme_activate = to_kvm_vmx(vcpu->kvm)->msr_ia32_tme_activate;
+    u64 tme_activate = to_kvm_vmx(kvm)->msr_ia32_tme_activate;
     if (!tme_locked(tme_activate))
         return 0;
 
-    return (gpa >> (vcpu->arch.maxphyaddr - keyid_bits(tme_activate))
+    return (gpa >> (max_phyaddr_bits - keyid_bits(tme_activate))
             & keyid_mask(tme_activate));
 }
 
-bool has_keyid(gpa_t gpa, struct kvm_vcpu *vcpu)
+bool has_keyid(gpa_t gpa, struct kvm *kvm)
 {
-    return !!keyid_of(gpa, vcpu);
+    return !!keyid_of(gpa, kvm);
 }
 
-bool is_tdx_keyid(u16 keyid, struct kvm_vcpu *vcpu)
+bool is_tdx_keyid(u16 keyid, struct kvm *kvm)
 {
-    u64 tme_activate = to_kvm_vmx(vcpu->kvm)->msr_ia32_tme_activate;
+    u64 tme_activate = to_kvm_vmx(kvm)->msr_ia32_tme_activate;
     if (!tme_locked(tme_activate))
         return false;
 
     return keyid >= (1 << (keyid_bits(tme_activate) - tdx_keyid_bits(tme_activate)));
 }
 
-gpa_t gpa_without_keyid(gpa_t gpa, struct kvm_vcpu *vcpu)
+gpa_t gpa_without_keyid(gpa_t gpa, struct kvm *kvm)
 {
-    u64 tme_activate = to_kvm_vmx(vcpu->kvm)->msr_ia32_tme_activate;
-    gpa_t mask = (1ULL << (vcpu->arch.maxphyaddr - keyid_bits(tme_activate))) - 1;
+    u64 tme_activate = to_kvm_vmx(kvm)->msr_ia32_tme_activate;
+    gpa_t mask = (1ULL << (max_phyaddr_bits - keyid_bits(tme_activate))) - 1;
 
     return gpa & mask;
 }
 
-gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm_vcpu *vcpu)
+gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm *kvm)
 {
-    u64 tme_activate = to_kvm_vmx(vcpu->kvm)->msr_ia32_tme_activate;
-    gpa_t mask = (((u64) keyid) << (vcpu->arch.maxphyaddr - keyid_bits(tme_activate)));
+    u64 tme_activate = to_kvm_vmx(kvm)->msr_ia32_tme_activate;
+    gpa_t mask = (((u64) keyid) << (max_phyaddr_bits - keyid_bits(tme_activate)));
 
     return gpa | mask;
 }

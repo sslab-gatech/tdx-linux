@@ -3461,7 +3461,7 @@ static int fast_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 		if (tdp_mmu_enabled) {
 			addr = fault->addr;
 			if (kvm_x86_ops.get_gpa_with_keyid) {
-				addr = kvm_x86_ops.get_gpa_with_keyid(addr, fault->keyid, vcpu);
+				addr = kvm_x86_ops.get_gpa_with_keyid(addr, fault->keyid, vcpu->kvm);
 			}
 			sptep = kvm_tdp_mmu_fast_pf_get_last_sptep(vcpu, addr, &spte);
 		} else

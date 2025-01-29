@@ -289,8 +289,8 @@ static inline int kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 	u16 keyid = 0;
 	u8 max_level = KVM_MAX_HUGEPAGE_LEVEL;
 	if (kvm_x86_ops.get_keyid_of) {
-		keyid = kvm_x86_ops.get_keyid_of(addr, vcpu);
-		addr = kvm_x86_ops.get_gpa_without_keyid(addr, vcpu);
+		keyid = kvm_x86_ops.get_keyid_of(addr, vcpu->kvm);
+		addr = kvm_x86_ops.get_gpa_without_keyid(addr, vcpu->kvm);
 		max_level = PG_LEVEL_4K; // Do not use huge pages for MKTME pages
 	}
 

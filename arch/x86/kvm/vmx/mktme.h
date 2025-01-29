@@ -136,11 +136,11 @@ typedef struct sptep_of_page {
 
 #define KEYID_EMPTY     0
 
-u16 keyid_of(gpa_t gpa, struct kvm_vcpu *vcpu);
-bool has_keyid(gpa_t gpa, struct kvm_vcpu *vcpu);
-bool is_tdx_keyid(u16 keyid, struct kvm_vcpu *vcpu);
-gpa_t gpa_without_keyid(gpa_t gpa, struct kvm_vcpu *vcpu);
-gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm_vcpu *vcpu);
+u16 keyid_of(gpa_t gpa, struct kvm *kvm);
+bool has_keyid(gpa_t gpa, struct kvm *kvm);
+bool is_tdx_keyid(u16 keyid, struct kvm *kvm);
+gpa_t gpa_without_keyid(gpa_t gpa, struct kvm *kvm);
+gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm *kvm);
 
 int handle_pconfig(struct kvm_vcpu *vcpu);
 

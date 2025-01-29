@@ -1055,7 +1055,7 @@ int kvm_tdp_mmu_map(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 	rcu_read_lock();
 
 	if (kvm_x86_ops.get_gpa_with_keyid) {
-		gpa = kvm_x86_ops.get_gpa_with_keyid(gpa, fault->keyid, vcpu);
+		gpa = kvm_x86_ops.get_gpa_with_keyid(gpa, fault->keyid, vcpu->kvm);
 		gfn = gpa >> PAGE_SHIFT;
 	}
 
