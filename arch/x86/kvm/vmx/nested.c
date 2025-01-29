@@ -5172,7 +5172,7 @@ int get_vmx_mem_address(struct kvm_vcpu *vcpu, unsigned long exit_qualification,
 	return 0;
 }
 
-static int nested_vmx_get_vmptr(struct kvm_vcpu *vcpu, gpa_t *vmpointer,
+int nested_vmx_get_vmptr(struct kvm_vcpu *vcpu, gpa_t *vmpointer,
 				int *ret)
 {
 	gva_t gva;
@@ -5365,7 +5365,7 @@ static int handle_vmxon(struct kvm_vcpu *vcpu)
 	return nested_vmx_succeed(vcpu);
 }
 
-static inline void nested_release_vmcs12(struct kvm_vcpu *vcpu)
+void nested_release_vmcs12(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 

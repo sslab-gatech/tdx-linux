@@ -871,9 +871,47 @@ exit:
 }
 
 static struct nested_vmx_instruction_handlers {
+    int (*vmptrld)(struct kvm_vcpu *);
+
     int (*vmread)(struct kvm_vcpu *);
     int (*vmwrite)(struct kvm_vcpu *);
 } vmx_instruction_handlers;
+
+static int handle_vmptrld(struct kvm_vcpu* vcpu)
+{
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+    gpa_t vmptr, seamrr_base, seamrr_end;
+    int r;
+
+    if (nested_vmx_get_vmptr(vcpu, &vmptr, &r))
+        return r;
+
+    seamrr_base = kvm_vmx->seamrr.base;
+    seamrr_end = seamrr_base + kvm_vmx->seamrr.size;
+
+    if (vmptr != vmx->seam_vmptr &&
+        kvm_vmx->seamrr.enabled && // TODO: not locked? 
+        vmptr >= seamrr_base && vmptr < seamrr_end) {
+        /* 1. Accessing seamrr from non-seam should aborts.
+         *    Enough to just return fail_invalid?
+         * 2. What happens if seam mode does vmptrld with a VMCS in seamrr?
+         */
+
+        return vmx_fail_invalid(vcpu);
+    } else if (vmx->seam_mode && vmptr == vmx->seam_vmptr) {
+        /* Should clear (dump vmcs02 to vmcs12) if a current vmptr exists */
+
+        nested_release_vmcs12(vcpu);
+        return vmx_succeed(vcpu);
+    } else {
+        /* Includes 
+         *  i) loading normal VMCS, 
+         *  ii) loading TD VMCS from seam mode 
+         */
+        return vmx_instruction_handlers.vmptrld(vcpu);
+    }
+}
 
 /* TODO: if guest VM-root uses shadow VMCS, vmread will not be caught.
  *       So, we should disable using shadow VMCS when running SEAMCALL.
@@ -891,7 +929,7 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
     gva_t gva = 0;
     int len, r;
 
-    if (vmx->seam_mode) {
+    if (vmx->seam_mode && vmx->nested.current_vmptr == INVALID_GPA) {
         if (is_guest_mode(vcpu)) {
             printk(KERN_WARNING "[TODO] support vmread in L2");
             return vmx_fail_invalid(vcpu);
@@ -953,7 +991,7 @@ static int handle_vmwrite(struct kvm_vcpu* vcpu)
     gva_t gva = 0;
     int len, r;
 
-    if (vmx->seam_mode) {
+    if (vmx->seam_mode && vmx->nested.current_vmptr == INVALID_GPA) {
         if (is_guest_mode(vcpu)) {
             printk(KERN_WARNING "[TODO] support vmwrite in L2");
             return vmx_fail_invalid(vcpu);
@@ -1006,9 +1044,11 @@ err:
 
 __init int seam_vmx_hardware_setup(int (*exit_handler[])(struct kvm_vcpu *))
 {
+    vmx_instruction_handlers.vmptrld = exit_handler[EXIT_REASON_VMPTRLD];
     vmx_instruction_handlers.vmread = exit_handler[EXIT_REASON_VMREAD];
     vmx_instruction_handlers.vmwrite = exit_handler[EXIT_REASON_VMWRITE];
 
+    exit_handler[EXIT_REASON_VMPTRLD] = handle_vmptrld;
     exit_handler[EXIT_REASON_VMREAD] = handle_vmread;
     exit_handler[EXIT_REASON_VMWRITE] = handle_vmwrite;
 
