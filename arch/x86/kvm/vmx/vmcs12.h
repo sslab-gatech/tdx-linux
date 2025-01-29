@@ -191,6 +191,17 @@ struct __packed vmcs12 {
 	u16 host_gs_selector;
 	u16 host_tr_selector;
 	u16 guest_pml_index;
+
+	/* opentdx */
+	u64 pconfig_exiting_bitmap;
+	u64 osv_cvp_addr;
+	u64 virtual_exception_info_addr;
+	u64 pasid_low;
+	u64 pasid_high;
+	u64 shared_ept_pointer;
+	u16 td_hkid;
+	u64 guest_ia32_spec_ctrl_mask;
+	u64 guest_ia32_spec_ctrl_shadow;
 };
 
 /*
@@ -370,6 +381,17 @@ static inline void vmx_check_vmcs12_offsets(void)
 	CHECK_OFFSET(host_gs_selector, 992);
 	CHECK_OFFSET(host_tr_selector, 994);
 	CHECK_OFFSET(guest_pml_index, 996);
+
+	/* opentdx */
+	CHECK_OFFSET(pconfig_exiting_bitmap, 998);
+	CHECK_OFFSET(osv_cvp_addr, 1006);
+	CHECK_OFFSET(virtual_exception_info_addr, 1014);
+	CHECK_OFFSET(pasid_low, 1022);
+	CHECK_OFFSET(pasid_high, 1030);
+	CHECK_OFFSET(shared_ept_pointer, 1038);
+	CHECK_OFFSET(td_hkid, 1046);
+	CHECK_OFFSET(guest_ia32_spec_ctrl_mask, 1048);
+	CHECK_OFFSET(guest_ia32_spec_ctrl_shadow, 1056);
 }
 
 extern const unsigned short vmcs12_field_offsets[];

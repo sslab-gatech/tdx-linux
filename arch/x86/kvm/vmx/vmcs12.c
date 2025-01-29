@@ -157,5 +157,16 @@ const unsigned short vmcs12_field_offsets[] = {
 	FIELD(HOST_S_CET, host_s_cet),
 	FIELD(HOST_SSP, host_ssp),
 	FIELD(HOST_INTR_SSP_TABLE, host_ssp_tbl),
+
+	/* opentdx */
+	FIELD64(PCONFIG_EXITING_BITMAP, pconfig_exiting_bitmap),
+	FIELD64(OSV_CVP_ADDR, osv_cvp_addr),
+	FIELD64(VIRTUAL_EXCEPTION_INFO_ADDR, virtual_exception_info_addr),
+	FIELD64(PASID_LOW, pasid_low),
+	FIELD64(PASID_HIGH, pasid_high),
+	FIELD64(SHARED_EPT_POINTER, shared_ept_pointer),
+	FIELD(TD_HKID, td_hkid),
+	FIELD64(GUEST_IA32_SPEC_CTRL_MASK, td_hkid),
+	FIELD64(GUEST_IA32_SPEC_CTRL_SHADOW, td_hkid),
 };
 const unsigned int nr_vmcs12_fields = ARRAY_SIZE(vmcs12_field_offsets);
