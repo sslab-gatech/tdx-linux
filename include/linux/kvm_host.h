@@ -2300,6 +2300,15 @@ static inline bool kvm_arch_no_poll(struct kvm_vcpu *vcpu)
 }
 #endif /* CONFIG_HAVE_KVM_NO_POLL */
 
+#if IS_ENABLED(CONFIG_KVM_INTEL)
+gpa_t kvm_arch_get_real_gpa(gpa_t gpa, struct kvm *kvm);
+#else
+gpa_t kvm_arch_get_real_gpa(gpa_t gpa, struct kvm *kvm)
+{
+	return gpa;
+}
+#endif
+
 #ifdef CONFIG_HAVE_KVM_VCPU_ASYNC_IOCTL
 long kvm_arch_vcpu_async_ioctl(struct file *filp,
 			       unsigned int ioctl, unsigned long arg);

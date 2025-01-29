@@ -242,6 +242,8 @@ static const struct {
 #define L1D_CACHE_ORDER 4
 static void *vmx_l1d_flush_pages;
 
+int max_phyaddr_bits = 0;
+
 static u8 zero_page[PAGE_SIZE] __aligned(PAGE_SIZE);
 static u8 ciphertext_page[PAGE_SIZE] __aligned(PAGE_SIZE);
 
@@ -6063,8 +6065,8 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	if (unlikely(allow_smaller_maxphyaddr && !kvm_vcpu_is_legal_gpa(vcpu, gpa)))
 		return kvm_emulate_instruction(vcpu, 0);
 
-	keyid = keyid_of(gpa, vcpu);
-	real_gfn = gpa_without_keyid(gpa, vcpu) >> PAGE_SHIFT;
+	keyid = keyid_of(gpa, vcpu->kvm);
+	real_gfn = gpa_without_keyid(gpa, vcpu->kvm) >> PAGE_SHIFT;
 	keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, real_gfn);
 
 	if (kvm_vmx->mktme_table[keyid].key_id != keyid) {
@@ -6072,7 +6074,7 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 
 		// TODO: abort
 		BUG();
-	} else if (is_tdx_keyid(keyid, vcpu)) {
+	} else if (is_tdx_keyid(keyid, vcpu->kvm)) {
 		if (!vmx->seam_mode) {
 			printk(KERN_WARNING "[opentdx] mktme violation: accessed 0x%llx (keyid: %d) from Non-SEAM", gpa, keyid);
 
@@ -8219,6 +8221,14 @@ static void vmx_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 	vmx_update_exception_bitmap(vcpu);
 
 	vmx_update_intercept_for_cet_msr(vcpu);
+
+	if (open_tdx && max_phyaddr_bits &&
+		max_phyaddr_bits != cpuid_maxphyaddr(vcpu)) {
+		printk(KERN_WARNING "[opentdx] panic: vcpus assigned different physical address bits\n");
+
+		BUG();
+	}
+	max_phyaddr_bits = cpuid_maxphyaddr(vcpu);
 }
 
 static u64 vmx_get_perf_capabilities(void)
@@ -8799,7 +8809,7 @@ found:
 			continue;
 		} else {
 			old_spte = *sptep_of_page->sptep;
-			if (is_tdx_keyid(sptep_of_page->keyid, vcpu)) {
+			if (is_tdx_keyid(sptep_of_page->keyid, vcpu->kvm)) {
 				new_spte = (__pa(ciphertext_page) & PAGE_MASK);
 			} else {
 				new_spte = (__pa(zero_page) & PAGE_MASK);

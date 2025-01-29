@@ -13812,6 +13812,14 @@ bool kvm_arch_no_poll(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_arch_no_poll);
 
+gpa_t kvm_arch_get_real_gpa(gpa_t gpa, struct kvm *kvm) 
+{
+	if (kvm_x86_ops.get_gpa_without_keyid)
+		return static_call(kvm_x86_get_gpa_without_keyid)(gpa, kvm);
+
+	return gpa;
+}
+EXPORT_SYMBOL_GPL(kvm_arch_get_real_gpa);
 
 int kvm_spec_ctrl_test_value(u64 value)
 {

@@ -3328,7 +3328,10 @@ static int __kvm_read_guest_page(struct kvm_memory_slot *slot, gfn_t gfn,
 int kvm_read_guest_page(struct kvm *kvm, gfn_t gfn, void *data, int offset,
 			int len)
 {
-	struct kvm_memory_slot *slot = gfn_to_memslot(kvm, gfn);
+	struct kvm_memory_slot *slot;
+
+	gfn = (kvm_arch_get_real_gpa(gfn << PAGE_SHIFT, kvm) >> PAGE_SHIFT);
+	slot = gfn_to_memslot(kvm, gfn);
 
 	return __kvm_read_guest_page(slot, gfn, data, offset, len);
 }
@@ -3337,7 +3340,10 @@ EXPORT_SYMBOL_GPL(kvm_read_guest_page);
 int kvm_vcpu_read_guest_page(struct kvm_vcpu *vcpu, gfn_t gfn, void *data,
 			     int offset, int len)
 {
-	struct kvm_memory_slot *slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
+	struct kvm_memory_slot *slot;
+
+	gfn = (kvm_arch_get_real_gpa(gfn << PAGE_SHIFT, vcpu->kvm) >> PAGE_SHIFT);
+	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
 
 	return __kvm_read_guest_page(slot, gfn, data, offset, len);
 }
@@ -3403,7 +3409,11 @@ static int __kvm_read_guest_atomic(struct kvm_memory_slot *slot, gfn_t gfn,
 int kvm_vcpu_read_guest_atomic(struct kvm_vcpu *vcpu, gpa_t gpa,
 			       void *data, unsigned long len)
 {
-	gfn_t gfn = gpa >> PAGE_SHIFT;
+	gfn_t gfn;
+
+	gpa = kvm_arch_get_real_gpa(gpa, vcpu->kvm);
+	gfn = gpa >> PAGE_SHIFT;
+
 	struct kvm_memory_slot *slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
 	int offset = offset_in_page(gpa);
 
@@ -3431,7 +3441,10 @@ static int __kvm_write_guest_page(struct kvm *kvm,
 int kvm_write_guest_page(struct kvm *kvm, gfn_t gfn,
 			 const void *data, int offset, int len)
 {
-	struct kvm_memory_slot *slot = gfn_to_memslot(kvm, gfn);
+	struct kvm_memory_slot *slot;
+
+	gfn = (kvm_arch_get_real_gpa(gfn << PAGE_SHIFT, kvm) >> PAGE_SHIFT);
+	slot = gfn_to_memslot(kvm, gfn);
 
 	return __kvm_write_guest_page(kvm, slot, gfn, data, offset, len);
 }
@@ -3440,7 +3453,10 @@ EXPORT_SYMBOL_GPL(kvm_write_guest_page);
 int kvm_vcpu_write_guest_page(struct kvm_vcpu *vcpu, gfn_t gfn,
 			      const void *data, int offset, int len)
 {
-	struct kvm_memory_slot *slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
+	struct kvm_memory_slot *slot;
+
+	gfn = (kvm_arch_get_real_gpa(gfn << PAGE_SHIFT, vcpu->kvm) >> PAGE_SHIFT);
+	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
 
 	return __kvm_write_guest_page(vcpu->kvm, slot, gfn, data, offset, len);
 }
@@ -3533,6 +3549,9 @@ int kvm_gfn_to_hva_cache_init(struct kvm *kvm, struct gfn_to_hva_cache *ghc,
 			      gpa_t gpa, unsigned long len)
 {
 	struct kvm_memslots *slots = kvm_memslots(kvm);
+
+	gpa = kvm_arch_get_real_gpa(gpa, kvm);
+
 	return __kvm_gfn_to_hva_cache_init(slots, ghc, gpa, len);
 }
 EXPORT_SYMBOL_GPL(kvm_gfn_to_hva_cache_init);
@@ -3615,7 +3634,11 @@ EXPORT_SYMBOL_GPL(kvm_read_guest_cached);
 int kvm_clear_guest(struct kvm *kvm, gpa_t gpa, unsigned long len)
 {
 	const void *zero_page = (const void *) __va(page_to_phys(ZERO_PAGE(0)));
-	gfn_t gfn = gpa >> PAGE_SHIFT;
+	gfn_t gfn;
+
+	gpa = kvm_arch_get_real_gpa(gpa, kvm);
+	gfn = gpa >> PAGE_SHIFT;
+
 	int seg;
 	int offset = offset_in_page(gpa);
 	int ret;
@@ -3637,6 +3660,7 @@ void mark_page_dirty_in_slot(struct kvm *kvm,
 		 	     gfn_t gfn)
 {
 	struct kvm_vcpu *vcpu = kvm_get_running_vcpu();
+	gfn = (kvm_arch_get_real_gpa(gfn << PAGE_SHIFT, kvm) >> PAGE_SHIFT);
 
 #ifdef CONFIG_HAVE_KVM_DIRTY_RING
 	if (WARN_ON_ONCE(vcpu && vcpu->kvm != kvm))
@@ -3660,6 +3684,7 @@ EXPORT_SYMBOL_GPL(mark_page_dirty_in_slot);
 void mark_page_dirty(struct kvm *kvm, gfn_t gfn)
 {
 	struct kvm_memory_slot *memslot;
+	gfn = (kvm_arch_get_real_gpa(gfn << PAGE_SHIFT, kvm) >> PAGE_SHIFT);
 
 	memslot = gfn_to_memslot(kvm, gfn);
 	mark_page_dirty_in_slot(kvm, memslot, gfn);
@@ -3669,6 +3694,7 @@ EXPORT_SYMBOL_GPL(mark_page_dirty);
 void kvm_vcpu_mark_page_dirty(struct kvm_vcpu *vcpu, gfn_t gfn)
 {
 	struct kvm_memory_slot *memslot;
+	gfn = (kvm_arch_get_real_gpa(gfn << PAGE_SHIFT, vcpu->kvm) >> PAGE_SHIFT);
 
 	memslot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
 	mark_page_dirty_in_slot(vcpu->kvm, memslot, gfn);
