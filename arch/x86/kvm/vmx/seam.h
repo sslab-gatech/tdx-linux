@@ -27,6 +27,8 @@
 #define SEAMRR_MASK_ALIGN               25
 #define SEAMRR_MASK_BITS_MASK(maxphyaddr)   (((1ULL<<maxphyaddr) - 1) & ~((1ULL<<SEAMRR_MASK_ALIGN) - 1))
 
+#define MSR_IA32_INTR_PENDING           0x9A
+
 #define P_SEAMLDR_RANGE_SIZE            (1ULL << SEAMRR_MASK_ALIGN)
 
 struct seam_range {

@@ -8373,7 +8373,7 @@ static void emulator_invlpg(struct x86_emulate_ctxt *ctxt, ulong address)
 	kvm_mmu_invlpg(emul_to_vcpu(ctxt), address);
 }
 
-static int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
+int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
 {
 	if (!need_emulate_wbinvd(vcpu))
 		return X86EMUL_CONTINUE;
@@ -8390,6 +8390,7 @@ static int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
 		wbinvd();
 	return X86EMUL_CONTINUE;
 }
+EXPORT_SYMBOL_GPL(kvm_emulate_wbinvd_noskip);
 
 int kvm_emulate_wbinvd(struct kvm_vcpu *vcpu)
 {

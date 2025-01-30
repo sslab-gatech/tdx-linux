@@ -2212,6 +2212,11 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 		msr_info->data = 0;
 		break;
+	case MSR_IA32_INTR_PENDING:
+		if (!open_tdx)
+			return 1;
+		msr_info->data = 0;
+		break;
 	default:
 	find_uret_msr:
 		msr = vmx_find_uret_msr(vmx, msr_info->index);

@@ -35,7 +35,7 @@ int write_wbinvdp(struct kvm_vcpu *vcpu)
         return 1;
 // TODO: invoked from vmx loads/stores
 
-    return kvm_emulate_wbinvd(vcpu);
+    return kvm_emulate_wbinvd_noskip(vcpu);
 }
 
 u16 keyid_of(gpa_t gpa, struct kvm *kvm)
