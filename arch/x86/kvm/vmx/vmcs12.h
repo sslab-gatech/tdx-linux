@@ -202,6 +202,7 @@ struct __packed vmcs12 {
 	u16 td_hkid;
 	u64 guest_ia32_spec_ctrl_mask;
 	u64 guest_ia32_spec_ctrl_shadow;
+	u64 tertiary_vm_exec_control;
 };
 
 /*
@@ -392,6 +393,7 @@ static inline void vmx_check_vmcs12_offsets(void)
 	CHECK_OFFSET(td_hkid, 1046);
 	CHECK_OFFSET(guest_ia32_spec_ctrl_mask, 1048);
 	CHECK_OFFSET(guest_ia32_spec_ctrl_shadow, 1056);
+	CHECK_OFFSET(tertiary_vm_exec_control, 1064);
 }
 
 extern const unsigned short vmcs12_field_offsets[];
