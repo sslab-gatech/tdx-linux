@@ -119,13 +119,13 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
         vmcs_write(GUEST_IA32_EFER_FULL, efer);
     }
 // TODO: IA32_BNDCFGS
-    printk(KERN_WARNING "[opentdx] do not support setting GUEST_IA32_RTIT_CTL");
+    printk_once("[opentdx] do not support setting GUEST_IA32_RTIT_CTL");
     // vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
     if (has_cet) {
         vmcs_write(GUEST_IA32_S_CET, vmcs_readl(GUEST_S_CET));
         vmcs_write(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR, vmcs_readl(GUEST_INTR_SSP_TABLE));
     } else {
-        printk(KERN_WARNING "[opentdx] do not support setting GUEST_S_CET, GUEST_INTR_SSP_TABLE");
+        printk_once("[opentdx] do not support setting GUEST_S_CET, GUEST_INTR_SSP_TABLE");
     }
 // TODO: IA32_LBR_CTL
 // TODO: PKRS
@@ -188,7 +188,7 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (has_cet) {
         vmcs_write(GUEST_SSP, vmcs_readl(GUEST_SSP));
     } else {
-        printk(KERN_WARNING "[opentdx] do not support setting GUEST_SSP");
+        printk_once("[opentdx] do not support setting GUEST_SSP");
     }
 // TODO: handling Resume Flag?
 
@@ -348,7 +348,7 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     }
 // TODO: IA32_BNDCFGS
     if (entry_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL) {
-        printk(KERN_WARNING "[opentdx] do not support loading ia32_rtit_ctl");
+        printk_once(KERN_WARNING "[opentdx] do not support loading ia32_rtit_ctl");
     }
     if (has_cet && (entry_ctls & VM_ENTRY_LOAD_CET_STATE)) {
         kvm_emulate_msr_write(vcpu, MSR_IA32_S_CET, vmcs_read(GUEST_IA32_S_CET));
@@ -746,7 +746,7 @@ int handle_seamret(struct kvm_vcpu *vcpu)
     }
 
     if (load_guest_state(vcpu, vmcs)) {
-        printk(KERN_WARNING "[opentdx] loading guest state returned 1");
+        printk(KERN_WARNING "[opentdx] failed to load guest state");
 
         vmcs_write(VM_EXIT_REASON,
             VMX_EXIT_REASONS_FAILED_VMENTRY | EXIT_REASON_INVALID_STATE);
