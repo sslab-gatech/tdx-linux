@@ -119,13 +119,13 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
         vmcs_write(GUEST_IA32_EFER_FULL, efer);
     }
 // TODO: IA32_BNDCFGS
-    printk_once("[opentdx] do not support setting GUEST_IA32_RTIT_CTL");
+    printk_once("[opentdx] do not support setting GUEST_IA32_RTIT_CTL\n");
     // vmcs_write(GUEST_RTIT_CTL_FULL, vmcs_read64(GUEST_IA32_RTIT_CTL));
     if (has_cet) {
         vmcs_write(GUEST_IA32_S_CET, vmcs_readl(GUEST_S_CET));
         vmcs_write(GUEST_IA32_INTERRUPT_SSP_TABLE_ADDR, vmcs_readl(GUEST_INTR_SSP_TABLE));
     } else {
-        printk_once("[opentdx] do not support setting GUEST_S_CET, GUEST_INTR_SSP_TABLE");
+        printk_once("[opentdx] do not support setting GUEST_S_CET, GUEST_INTR_SSP_TABLE\n");
     }
 // TODO: IA32_LBR_CTL
 // TODO: PKRS
@@ -188,7 +188,7 @@ static void save_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (has_cet) {
         vmcs_write(GUEST_SSP, vmcs_readl(GUEST_SSP));
     } else {
-        printk_once("[opentdx] do not support setting GUEST_SSP");
+        printk_once("[opentdx] do not support setting GUEST_SSP\n");
     }
 // TODO: handling Resume Flag?
 
@@ -306,7 +306,7 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     idtr.size = vmcs_read(GUEST_IDTR_LIMIT);
 
     if (rflags & X86_EFLAGS_VM) {
-        printk(KERN_WARNING "[opentdx] does not allow entering guest with virtual 8086 mode");
+        printk(KERN_WARNING "[opentdx] does not allow entering guest with virtual 8086 mode\n");
         return 1;
     }
 
@@ -339,7 +339,7 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (entry_ctls & VM_ENTRY_LOAD_IA32_EFER) {
         kvm_emulate_msr_write(vcpu, MSR_EFER, efer);
     } else {
-        printk(KERN_WARNING "[opentdx] does not allow unsetting load_ia32_efer entry ctls");
+        printk(KERN_WARNING "[opentdx] do not support unsetting load_ia32_efer entry ctls\n");
         return 1;
     }
 // TODO: IA32_PERF_GLOBAL_CTL
@@ -348,7 +348,7 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     }
 // TODO: IA32_BNDCFGS
     if (entry_ctls & VM_ENTRY_LOAD_IA32_RTIT_CTL) {
-        printk_once(KERN_WARNING "[opentdx] do not support loading ia32_rtit_ctl");
+        printk_once(KERN_WARNING "[opentdx] do not support loading ia32_rtit_ctl\n");
     }
     if (has_cet && (entry_ctls & VM_ENTRY_LOAD_CET_STATE)) {
         kvm_emulate_msr_write(vcpu, MSR_IA32_S_CET, vmcs_read(GUEST_IA32_S_CET));
@@ -423,8 +423,10 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     else
         cr4 &= ~X86_CR4_PCIDE;
 
-    if (!has_cet)
+    if (!has_cet) {
+        printk_once(KERN_WARNING "[opentdx] do not support setting X86_CR4_CET\n");
         cr4 &= ~X86_CR4_CET;
+    }
     kvm_set_cr4(vcpu, cr4);
 
     kvm_set_dr(vcpu, 7, 0x400);
@@ -746,7 +748,7 @@ int handle_seamret(struct kvm_vcpu *vcpu)
     }
 
     if (load_guest_state(vcpu, vmcs)) {
-        printk(KERN_WARNING "[opentdx] failed to load guest state");
+        printk(KERN_WARNING "[opentdx] failed to load guest state\n");
 
         vmcs_write(VM_EXIT_REASON,
             VMX_EXIT_REASONS_FAILED_VMENTRY | EXIT_REASON_INVALID_STATE);
@@ -931,7 +933,7 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
 
     if (vmx->seam_mode && vmx->nested.current_vmptr == INVALID_GPA) {
         if (is_guest_mode(vcpu)) {
-            printk(KERN_WARNING "[TODO] support vmread in L2");
+            printk(KERN_WARNING "[TODO] support vmread in L2\n");
             return vmx_fail_invalid(vcpu);
         }
 
@@ -951,7 +953,7 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
         switch (encode) {
 #include "vmx_vmcs_macro.h"
         default:
-        printk(KERN_WARNING "%s: unknown encoding 0x%0lx", __func__, encode);
+        printk(KERN_WARNING "%s: unknown encoding 0x%0lx\n", __func__, encode);
         return vmx_fail_invalid(vcpu);
         }
 #undef macro
@@ -972,7 +974,7 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
         return vmx_succeed(vcpu);
 
 err:
-        printk(KERN_WARNING "%s: error while handling vmread",
+        printk(KERN_WARNING "%s: error while handling vmread\n",
                __func__);
         return 1;
     } else {
@@ -993,7 +995,7 @@ static int handle_vmwrite(struct kvm_vcpu* vcpu)
 
     if (vmx->seam_mode && vmx->nested.current_vmptr == INVALID_GPA) {
         if (is_guest_mode(vcpu)) {
-            printk(KERN_WARNING "[TODO] support vmwrite in L2");
+            printk(KERN_WARNING "[TODO] support vmwrite in L2\n");
             return vmx_fail_invalid(vcpu);
         }
 
@@ -1026,7 +1028,7 @@ static int handle_vmwrite(struct kvm_vcpu* vcpu)
         switch (encode) {
 #include "vmx_vmcs_macro.h"
         default:
-        printk(KERN_WARNING "%s: unknown encoding 0x%0lx", __func__, encode);
+        printk(KERN_WARNING "%s: unknown encoding 0x%0lx\n", __func__, encode);
         return vmx_fail_invalid(vcpu);
         }
 #undef macro
@@ -1034,7 +1036,7 @@ static int handle_vmwrite(struct kvm_vcpu* vcpu)
         return vmx_succeed(vcpu);
 
 err:
-        printk(KERN_WARNING "%s: error while handling vmwrite",
+        printk(KERN_WARNING "%s: error while handling vmwrite\n",
                __func__);
         return 1;
     } else {
