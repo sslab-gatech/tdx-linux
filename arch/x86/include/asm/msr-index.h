@@ -124,6 +124,9 @@
 						 * TSX Async Abort (TAA) vulnerabilities.
 						 */
 #define ARCH_CAP_MISC_PKG_CTRLS		BIT(10)
+#define ARCH_CAP_DOITM				BIT(12) /*
+						 * Support Data Operand Independent Timing Mode
+						 */
 #define ARCH_CAP_SBDR_SSDP_NO		BIT(13)	/*
 						 * Not susceptible to SBDR and SSDP
 						 * variants of Processor MMIO stale data
@@ -1161,5 +1164,7 @@
 
 #define MSR_IA32_SMRR_PHYSBASE			0x1F2
 #define MSR_IA32_SMRR_PHYSMASK			0x1F3
+
+#define MSR_IA32_UARCH_MISC_CTRL		0x1B01
 
 #endif /* _ASM_X86_MSR_INDEX_H */

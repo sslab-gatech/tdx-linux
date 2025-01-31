@@ -4392,8 +4392,7 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		
 		u64 arch_cap = vcpu->arch.arch_capabilities;
 		if (open_tdx)
-			arch_cap |= (ARCH_CAP_XAPIC_DISABLE | ARCH_CAP_TSX_CTRL_MSR |
-						 ARCH_CAP_MISC_PKG_CTRLS);
+			arch_cap |= (ARCH_CAP_XAPIC_DISABLE | ARCH_CAP_MISC_PKG_CTRLS);
 
 		msr_info->data = arch_cap;
 		break;
