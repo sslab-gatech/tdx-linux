@@ -65,16 +65,23 @@ bool is_tdx_keyid(u16 keyid, struct kvm *kvm)
 gpa_t gpa_without_keyid(gpa_t gpa, struct kvm *kvm)
 {
     u64 tme_activate = to_kvm_vmx(kvm)->msr_ia32_tme_activate;
-    gpa_t mask = (1ULL << (max_phyaddr_bits - keyid_bits(tme_activate))) - 1;
+    if (!tme_locked(tme_activate))
+        return gpa;
 
+    gpa_t mask = (1ULL << (max_phyaddr_bits - keyid_bits(tme_activate))) - 1;
     return gpa & mask;
 }
 
 gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm *kvm)
 {
     u64 tme_activate = to_kvm_vmx(kvm)->msr_ia32_tme_activate;
-    gpa_t mask = (((u64) keyid) << (max_phyaddr_bits - keyid_bits(tme_activate)));
+    if (keyid != 0 && !tme_locked(tme_activate)) {
+        pr_err("[opentdx] tried to get keyid|gpa without tme activated\n");
 
+        BUG();
+    }
+
+    gpa_t mask = (((u64) keyid) << (max_phyaddr_bits - keyid_bits(tme_activate)));
     return gpa | mask;
 }
 
