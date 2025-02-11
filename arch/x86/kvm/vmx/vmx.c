@@ -70,6 +70,7 @@
 #include "smx.h"
 #include "seam.h"
 #include "mktme.h"
+#include "td.h"
 
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
@@ -5479,6 +5480,7 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 	static const char seamret_bytecode[] = { __SEAMRET_BYTECODE };
 	static const char seamops_bytecode[] = { __SEAMOPS_BYTECODE };
 	static const char pconfig_bytecode[] = { __PCONFIG_BYTECODE };
+	static const char tdcall_bytecode[] = { __TDCALL_BYTECODE };
 
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct kvm_run *kvm_run = vcpu->run;
@@ -5525,6 +5527,8 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 				return handle_seamret(vcpu);
 			else if (memcmp(inst, pconfig_bytecode, sizeof(pconfig_bytecode)) == 0)
 				return handle_pconfig(vcpu);
+			else if (memcmp(inst, tdcall_bytecode, sizeof(tdcall_bytecode)) == 0)
+				return handle_tdcall(vcpu);
 			else
 				return handle_ud(vcpu);
 		} else

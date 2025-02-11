@@ -17,6 +17,7 @@
 #include "vmx.h"
 #include "x86.h"
 #include "smm.h"
+#include "td.h"
 
 static bool __read_mostly enable_shadow_vmcs = 1;
 module_param_named(enable_shadow_vmcs, enable_shadow_vmcs, bool, S_IRUGO);
@@ -6363,6 +6364,8 @@ static bool nested_vmx_l1_wants_exit(struct kvm_vcpu *vcpu,
 			return true;
 		else if (is_page_fault(intr_info))
 			return true;
+		else if (is_from_tdcall(vcpu, intr_info))
+			return false;
 		return vmcs12->exception_bitmap &
 				(1u << (intr_info & INTR_INFO_VECTOR_MASK));
 	case EXIT_REASON_EXTERNAL_INTERRUPT:
