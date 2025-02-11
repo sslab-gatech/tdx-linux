@@ -948,6 +948,10 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 	u64 new_spte;
 	int ret = RET_PF_FIXED;
 	bool wrprot = false;
+	gfn_t real_gfn = iter->gfn;
+	if (kvm_x86_ops.get_gpa_without_keyid) {
+		real_gfn = kvm_x86_ops.get_gpa_without_keyid(real_gfn << PAGE_SHIFT, vcpu->kvm) >> PAGE_SHIFT;
+	}
 
 	if (WARN_ON_ONCE(sp->role.level != fault->goal_level))
 		return RET_PF_RETRY;
@@ -955,7 +959,7 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 	if (unlikely(!fault->slot))
 		new_spte = make_mmio_spte(vcpu, iter->gfn, ACC_ALL);
 	else
-		wrprot = make_spte(vcpu, sp, fault->slot, ACC_ALL, iter->gfn,
+		wrprot = make_spte(vcpu, sp, fault->slot, ACC_ALL, real_gfn,
 					 fault->pfn, iter->old_spte, fault->prefetch, true,
 					 fault->map_writable, &new_spte);
 
@@ -966,8 +970,8 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 			!is_mmio_spte(new_spte) &&
 			is_last_spte(new_spte, iter->level) &&
 			is_writable_pte(new_spte))
-			static_call(kvm_x86_update_keyid_of_pages)(vcpu, fault->addr, fault->keyid,
-													rcu_dereference(iter->sptep));
+			kvm_x86_ops.update_keyid_of_pages(vcpu, fault->addr, fault->keyid,
+											rcu_dereference(iter->sptep));
 
 		if (tdp_mmu_set_spte_atomic(vcpu->kvm, iter, new_spte))
 			return RET_PF_RETRY;
