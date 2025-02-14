@@ -127,11 +127,12 @@ static struct folio *kvm_gmem_get_huge_folio(struct inode *inode, pgoff_t index)
  * Ignore accessed, referenced, and dirty flags.  The memory is
  * unevictable and there is no storage to write back to.
  */
-static struct folio *kvm_gmem_get_folio(struct inode *inode, pgoff_t index)
+static struct folio *kvm_gmem_get_folio(struct inode *inode, pgoff_t index, enum pg_level level)
 {
-	struct folio *folio;
+	struct folio *folio = NULL;
 
-	folio = kvm_gmem_get_huge_folio(inode, index);
+	if (level > PG_LEVEL_4K)
+		folio = kvm_gmem_get_huge_folio(inode, index);
 	if (!folio) {
 		folio = filemap_grab_folio(inode->i_mapping, index);
 		if (IS_ERR_OR_NULL(folio))
@@ -240,7 +241,7 @@ static long kvm_gmem_allocate(struct inode *inode, loff_t offset, loff_t len)
 			break;
 		}
 
-		folio = kvm_gmem_get_folio(inode, index);
+		folio = kvm_gmem_get_folio(inode, index, PG_LEVEL_2M);
 		if (IS_ERR(folio)) {
 			r = PTR_ERR(folio);
 			break;
@@ -617,7 +618,8 @@ void kvm_gmem_unbind(struct kvm_memory_slot *slot)
 static struct folio *__kvm_gmem_get_pfn(struct file *file,
 					struct kvm_memory_slot *slot,
 					pgoff_t index, kvm_pfn_t *pfn,
-					bool *is_prepared, int *max_order)
+					bool *is_prepared, int *max_order,
+					enum pg_level max_level)
 {
 	pgoff_t huge_index;
 	struct file *gmem_file = READ_ONCE(slot->gmem.file);
@@ -636,7 +638,7 @@ static struct folio *__kvm_gmem_get_pfn(struct file *file,
 		return ERR_PTR(-EIO);
 	}
 
-	folio = kvm_gmem_get_folio(file_inode(file), index);
+	folio = kvm_gmem_get_folio(file_inode(file), index, max_level);
 	if (IS_ERR(folio))
 		return folio;
 
@@ -681,7 +683,7 @@ int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 	if (!file)
 		return -EFAULT;
 
-	folio = __kvm_gmem_get_pfn(file, slot, index, pfn, &is_prepared, max_order);
+	folio = __kvm_gmem_get_pfn(file, slot, index, pfn, &is_prepared, max_order, PG_LEVEL_2M);
 	if (IS_ERR(folio)) {
 		r = PTR_ERR(folio);
 		goto out;
@@ -741,7 +743,7 @@ long kvm_gmem_populate(struct kvm *kvm, gfn_t start_gfn, void __user *src, long 
 			break;
 		}
 
-		folio = __kvm_gmem_get_pfn(file, slot, index, &pfn, &is_prepared, &max_order);
+		folio = __kvm_gmem_get_pfn(file, slot, index, &pfn, &is_prepared, &max_order, PG_LEVEL_4K);
 		if (IS_ERR(folio)) {
 			ret = PTR_ERR(folio);
 			break;
