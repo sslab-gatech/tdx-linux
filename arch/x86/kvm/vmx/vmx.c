@@ -2429,7 +2429,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		if (!msr_info->host_initiated &&
 		    !(vcpu->arch.arch_capabilities & ARCH_CAP_TSX_CTRL_MSR)) {
 			if (open_tdx) {
-				printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_TSX_CTRL\n", msr_info->data);
+				printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_TSX_CTRL\n", msr_info->data);
 				break; // Just ignore with warning as we do not emulate
 			}
 			return 1;
@@ -2649,7 +2649,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_MISC_PACKAGE_CTLS:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_MISC_PACKAGE_CTLS\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_MISC_PACKAGE_CTLS\n", msr_info->data);
 		break;
 	case MSR_IA32_WBINVDP:
 		if (!open_tdx || write_wbinvdp(vcpu))
@@ -2662,37 +2662,37 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_SMRR_PHYSBASE:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_SMRR_PHYSBASE\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_SMRR_PHYSBASE\n", msr_info->data);
 		break;
 	case MSR_IA32_SMRR_PHYSMASK:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_SMRR_PHYSMASK\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_SMRR_PHYSMASK\n", msr_info->data);
 		break;
 	case MSR_IA32_DS_AREA:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_DS_AREA\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_DS_AREA\n", msr_info->data);
 		break;
 	case MSR_CORE_PERF_FIXED_CTR_CTRL:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_CORE_PERF_FIXED_CTR_CTRL\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_CORE_PERF_FIXED_CTR_CTRL\n", msr_info->data);
 		break;
 	case MSR_CORE_PERF_FIXED_CTR0:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_CORE_PERF_FIXED_CTR0\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_CORE_PERF_FIXED_CTR0\n", msr_info->data);
 		break;
 	case MSR_CORE_PERF_GLOBAL_STATUS:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_CORE_PERF_GLOBAL_STATUS\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_CORE_PERF_GLOBAL_STATUS\n", msr_info->data);
 		break;
 	case MSR_IA32_UARCH_MISC_CTRL:
 		if (!open_tdx)
 			return 1;
-		printk(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_UARCH_MISC_CTRL\n", msr_info->data);
+		printk_once(KERN_WARNING "[opentdx] Ignoring write 0x%llx to MSR_IA32_UARCH_MISC_CTRL\n", msr_info->data);
 		break;
 	default:
 	find_uret_msr:

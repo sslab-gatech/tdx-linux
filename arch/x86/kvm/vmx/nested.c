@@ -5369,11 +5369,13 @@ static int handle_vmxon(struct kvm_vcpu *vcpu)
 void nested_release_vmcs12(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
 
 	if (vmx->nested.current_vmptr == INVALID_GPA)
 		return;
 
-	copy_vmcs02_to_vmcs12_rare(vcpu, get_vmcs12(vcpu));
+	copy_vmcs02_to_vmcs12_rare(vcpu, vmcs12);
+	vmcs12->eptp_index = 0;
 
 	if (enable_shadow_vmcs) {
 		/* copy to memory all shadowed fields in case
@@ -5983,6 +5985,7 @@ static int nested_vmx_eptp_switching(struct kvm_vcpu *vcpu,
 		if (!nested_vmx_check_eptp(vcpu, new_eptp))
 			return 1;
 
+		vmcs12->eptp_index = index;
 		vmcs12->ept_pointer = new_eptp;
 		nested_ept_new_eptp(vcpu);
 
@@ -7071,6 +7074,9 @@ static void nested_vmx_setup_secondary_ctls(u32 ept_caps,
 
 	if (enable_sgx)
 		msrs->secondary_ctls_high |= SECONDARY_EXEC_ENCLS_EXITING;
+
+	if (open_tdx)
+		msrs->secondary_ctls_high |= SECONDARY_EXEC_EPT_VIOLATION_VE;
 }
 
 static void nested_vmx_setup_misc_data(struct vmcs_config *vmcs_conf,

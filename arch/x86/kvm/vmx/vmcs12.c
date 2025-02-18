@@ -168,6 +168,7 @@ const unsigned short vmcs12_field_offsets[] = {
 	FIELD(TD_HKID, td_hkid),
 	FIELD64(GUEST_IA32_SPEC_CTRL_MASK, td_hkid),
 	FIELD64(GUEST_IA32_SPEC_CTRL_SHADOW, td_hkid),
-	FIELD64(TERTIARY_VM_EXEC_CONTROL, tertiary_vm_exec_control)
+	FIELD64(TERTIARY_VM_EXEC_CONTROL, tertiary_vm_exec_control),
+	FIELD(EPTP_INDEX, eptp_index)
 };
 const unsigned int nr_vmcs12_fields = ARRAY_SIZE(vmcs12_field_offsets);
