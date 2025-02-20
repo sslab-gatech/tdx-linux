@@ -29,6 +29,10 @@
 
 #define MSR_IA32_INTR_PENDING           0x9A
 
+#define BIT_INTR_PENDING                BIT(0)
+#define BIT_NMI_PENDING                 BIT(1)
+#define BIT_SMI_PENDING                 BIT(2)
+
 #define P_SEAMLDR_RANGE_SIZE            (1ULL << SEAMRR_MASK_ALIGN)
 
 struct seam_range {

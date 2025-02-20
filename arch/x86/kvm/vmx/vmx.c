@@ -2214,9 +2214,13 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = 0;
 		break;
 	case MSR_IA32_INTR_PENDING:
-		if (!open_tdx)
+		if (!open_tdx || !(vmx->seam_mode && !is_guest_mode(vcpu)))
 			return 1;
-		msr_info->data = 0;
+		msr_info->data = kvm_cpu_has_injectable_intr(vcpu) ? BIT_INTR_PENDING : 0;
+		msr_info->data |= vcpu->arch.nmi_pending ? BIT_NMI_PENDING : 0;
+#ifdef CONFIG_KVM_SMM
+		msr_info->data |= vcpu->arch.smi_pending ? BIT_SMI_PENDING : 0;
+#endif
 		break;
 	case MSR_IA32_DS_AREA:
 		if (!open_tdx)
@@ -5194,7 +5198,6 @@ static void vmx_enable_irq_window(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 
-	// If CPU is in SEAM VMX root mode, we intentionally block irq regardless of RFLAGS.IF
 	if (vmx->seam_mode && !is_guest_mode(vcpu))
 		return;
 
@@ -7454,7 +7457,8 @@ static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 	type = idt_vectoring_info & VECTORING_INFO_TYPE_MASK;
 
 	if (vmx->seam_mode) {
-		printk(KERN_WARNING "[opentdx] vector %d injected while in seam mode\n", vector);
+		printk(KERN_WARNING "[opentdx] vector %d injected while in seam mode at 0x%lx\n", 
+				vector, kvm_rip_read(vcpu));
 
 		BUG();
 	}
