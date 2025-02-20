@@ -7448,14 +7448,16 @@ static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 	if (!idtv_info_valid)
 		return;
 
-	// [TODO] idt_vectoring is info often filled spuriously. Just ignore now.
-	if (vmx->seam_mode)
-		return;
-
 	kvm_make_request(KVM_REQ_EVENT, vcpu);
 
 	vector = idt_vectoring_info & VECTORING_INFO_VECTOR_MASK;
 	type = idt_vectoring_info & VECTORING_INFO_TYPE_MASK;
+
+	if (vmx->seam_mode) {
+		printk(KERN_WARNING "[opentdx] vector %d injected while in seam mode\n", vector);
+
+		BUG();
+	}
 
 	switch (type) {
 	case INTR_TYPE_NMI_INTR:
