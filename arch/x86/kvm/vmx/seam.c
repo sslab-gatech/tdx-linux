@@ -697,9 +697,16 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     save_guest_state(vcpu, (u8 *) vmcs);
     load_host_state(vcpu, (u8 *) vmcs);
 
+    down_read(&vcpu->kvm->arch.apicv_update_lock);
+    preempt_disable();
+
     vcpu->arch.apic->apicv_active = false;
     kvm_apic_update_apicv(vcpu);
+    vmx_refresh_apicv_exec_ctrl(vcpu);
     kvm_make_request(KVM_REQ_EVENT, vcpu);
+
+    preempt_enable();
+    up_read(&vcpu->kvm->arch.apicv_update_lock);
 
     kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(vmx->seam_vmptr), vmcs, 0, PAGE_SIZE);
 
@@ -764,8 +771,15 @@ int handle_seamret(struct kvm_vcpu *vcpu)
         mutex_unlock(&kvm_vmx->p_seamldr_lock);
     }
 
+    down_read(&vcpu->kvm->arch.apicv_update_lock);
+    preempt_disable();
+
     vcpu->arch.apic->apicv_active = true;
-    kvm_make_request(KVM_REQ_APICV_UPDATE, vcpu);
+    kvm_apic_update_apicv(vcpu);
+    vmx_refresh_apicv_exec_ctrl(vcpu);
+
+    preempt_enable();
+    up_read(&vcpu->kvm->arch.apicv_update_lock);
 
 exit:
     free_page((unsigned long) vmcs);
