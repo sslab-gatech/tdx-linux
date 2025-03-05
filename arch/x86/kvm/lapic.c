@@ -1483,6 +1483,12 @@ static int apic_set_eoi(struct kvm_lapic *apic)
 	return vector;
 }
 
+int kvm_apic_set_eoi(struct kvm_vcpu *vcpu)
+{
+	return apic_set_eoi(vcpu->arch.apic);
+}
+EXPORT_SYMBOL_GPL(kvm_apic_set_eoi);
+
 /*
  * this interface assumes a trap-like exit, which has already finished
  * desired side effect including vISR and vPPR update.

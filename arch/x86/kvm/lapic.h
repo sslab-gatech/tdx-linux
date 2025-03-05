@@ -130,6 +130,7 @@ u64 kvm_get_lapic_tscdeadline_msr(struct kvm_vcpu *vcpu);
 void kvm_set_lapic_tscdeadline_msr(struct kvm_vcpu *vcpu, u64 data);
 
 void kvm_apic_write_nodecode(struct kvm_vcpu *vcpu, u32 offset);
+int kvm_apic_set_eoi(struct kvm_vcpu *vcpu);
 void kvm_apic_set_eoi_accelerated(struct kvm_vcpu *vcpu, int vector);
 
 int kvm_lapic_set_vapic_addr(struct kvm_vcpu *vcpu, gpa_t vapic_addr);

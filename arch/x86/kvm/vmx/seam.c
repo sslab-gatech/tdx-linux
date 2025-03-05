@@ -697,6 +697,17 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     save_guest_state(vcpu, (u8 *) vmcs);
     load_host_state(vcpu, (u8 *) vmcs);
 
+    /* Flush irqs that are served when SEAMCALL
+     *   Such irqs cause irq blocking later as SVI is set but not flushed
+     *   Don't know why such irq was not flushed until here...
+     */
+    int vec = kvm_apic_set_eoi(vcpu);
+    while (vec != -1) {
+        printk(KERN_WARNING "[opentex]: flushed isr %d\n", vec);
+
+        vec = kvm_apic_set_eoi(vcpu);
+    };
+
     down_read(&vcpu->kvm->arch.apicv_update_lock);
     preempt_disable();
 
