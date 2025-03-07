@@ -1628,6 +1628,11 @@ struct kvm_enc_region {
 #define KVM_GET_NESTED_STATE         _IOWR(KVMIO, 0xbe, struct kvm_nested_state)
 #define KVM_SET_NESTED_STATE         _IOW(KVMIO,  0xbf, struct kvm_nested_state)
 
+#define KVM_GET_SEAM_STATE			 _IOWR(KVMIO, 0xf0, struct kvm_seam_state)
+#define KVM_GET_MKTME_STATE			 _IOWR(KVMIO, 0xf1, struct kvm_mktme_state)
+#define KVM_GET_MKTME_ENTRIES		 _IOWR(KVMIO, 0xf2, struct kvm_mktme_entries)
+#define KVM_GET_PAGE_KEYIDS	  		 _IOWR(KVMIO, 0xf3, struct kvm_page_keyids)
+
 /* Available with KVM_CAP_MANUAL_DIRTY_LOG_PROTECT_2 */
 #define KVM_CLEAR_DIRTY_LOG          _IOWR(KVMIO, 0xc0, struct kvm_clear_dirty_log)
 

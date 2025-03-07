@@ -1082,3 +1082,40 @@ __init int seam_vmx_hardware_setup(int (*exit_handler[])(struct kvm_vcpu *))
     return 0;
 } 
 
+int get_seam_state(struct kvm_vcpu *vcpu, struct kvm_seam_state __user *user_kvm_seam_state)
+{
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+
+    struct kvm_seam_state seam_state = {
+        .seamrr.configured = kvm_vmx->seamrr.configured,
+        .seamrr.locked = kvm_vmx->seamrr.locked,
+        .seamrr.enabled = kvm_vmx->seamrr.enabled,
+        .seamrr.base = kvm_vmx->seamrr.base,
+        .seamrr.size = kvm_vmx->seamrr.size,
+
+        .seam_extend.valid = kvm_vmx->seam_extend.valid,
+        .seam_extend.attributes = kvm_vmx->seam_extend.attributes,
+        .seam_extend.seam_ready = kvm_vmx->seam_extend.seam_ready,
+        .seam_extend.seam_under_debug = kvm_vmx->seam_extend.seam_under_debug,
+        .seam_extend.p_seamldr_ready = kvm_vmx->seam_extend.p_seamldr_ready,
+        .seam_extend.reserved = { 0, },
+
+        .authenticated_code_execution_mode = vmx->authenticated_code_execution_mode,
+        .seam_mode = vmx->seam_mode,
+        .seam_vmptr = vmx->seam_vmptr,
+        .in_pseamldr = vmx->in_pseamldr,
+        .msr_ia32_bios_se_svn = vmx->msr_ia32_bios_se_svn,
+        .msr_ia32_bios_done = vmx->msr_ia32_bios_done,
+        .xapic_disable = vmx->xapic_disable
+    };
+
+    memcpy(seam_state.seam_extend.tee_tcb_svn, kvm_vmx->seam_extend.tee_tcb_svn, 16);
+    memcpy(seam_state.seam_extend.mr_seam, kvm_vmx->seam_extend.mr_seam, 48);
+    memcpy(seam_state.seam_extend.mr_signer, kvm_vmx->seam_extend.mr_signer, 48);
+
+    if (copy_to_user(user_kvm_seam_state, &seam_state, sizeof(seam_state)))
+        return -EFAULT;
+
+    return 0;
+}

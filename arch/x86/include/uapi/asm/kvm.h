@@ -513,6 +513,74 @@ struct kvm_nested_state {
 	} data;
 };
 
+/* For TDX emulated VM migration */
+struct kvm_seam_state {
+    /* These are package scope, so make only bsp to handle these */
+	struct {
+		__u8 configured;
+		__u8 locked;
+		__u8 enabled;
+		__u64 base;
+		__u64 size;
+	} seamrr;
+
+	struct {
+		__u64 valid;
+		__u8 tee_tcb_svn[16];
+		__u8 mr_seam[48];
+		__u8 mr_signer[48];
+		__u64 attributes;
+		__u8 seam_ready;
+		__u8 seam_under_debug;
+		__u8 p_seamldr_ready;
+		__u8 reserved[5];
+	} seam_extend;
+    // TODO: p_seamldr_lock
+
+    /* These are processor scope */
+	__u8 authenticated_code_execution_mode;
+	__u8 seam_mode;
+	__u64 seam_vmptr;
+	__u8 in_pseamldr;
+	__u64 msr_ia32_bios_se_svn;
+	__u64 msr_ia32_bios_done;
+	__u64 xapic_disable;
+};
+
+struct kvm_mktme_entry {
+	__u16 key_id;
+	__u8 key[32];
+	__u8 enc_mode;
+};
+
+struct kvm_mktme_entries {
+	__u32 num_entries;
+	struct kvm_mktme_entry *entries;
+};
+
+struct kvm_page_keyid {
+	__u64 gfn;
+	__u16 key_id;
+};
+
+struct kvm_page_keyids {
+	__u32 num_pages;
+	struct kvm_page_keyid *pages;
+};
+
+struct kvm_mktme_state {
+	__u64 msr_ia32_tme_capability;
+	__u64 msr_ia32_tme_activate;
+
+	__u32 num_mktme_keys;
+	struct kvm_mktme_entry *mktme_entries;
+
+	__u32 num_page_keyids;
+	struct kvm_page_keyid *page_keyids;
+};
+/**/
+
+
 /* for KVM_CAP_PMU_EVENT_FILTER */
 struct kvm_pmu_event_filter {
 	__u32 action;

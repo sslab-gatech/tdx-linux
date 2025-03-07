@@ -179,3 +179,34 @@ int handle_pconfig(struct kvm_vcpu *vcpu)
     return 1;
 }
 EXPORT_SYMBOL_GPL(handle_pconfig);
+
+int get_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_kvm_mktme_state)
+{
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+
+    struct kvm_mktme_state mktme_state = {
+        .msr_ia32_tme_capability = kvm_vmx->msr_ia32_tme_capability,
+        .msr_ia32_tme_activate = kvm_vmx->msr_ia32_tme_activate,
+
+        .num_mktme_keys = (1 << KEYID_BITS),
+        .mktme_entries = NULL,
+
+        .num_page_keyids = atomic_read(&kvm_vmx->num_keyed_pages),
+        .page_keyids = NULL,
+    };
+
+    if (copy_to_user(user_kvm_mktme_state, &mktme_state, sizeof(mktme_state)))
+        return -EFAULT;
+
+    return 0;
+}
+
+int get_mktme_entries(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *user_mktme_entries)
+{
+    return 0;
+}
+
+int get_page_keyids(struct kvm_vcpu *vcpu, struct kvm_page_keyids __user *user_page_keyids)
+{
+    return 0;
+}

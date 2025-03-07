@@ -7456,7 +7456,7 @@ static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 	vector = idt_vectoring_info & VECTORING_INFO_VECTOR_MASK;
 	type = idt_vectoring_info & VECTORING_INFO_TYPE_MASK;
 
-	if (vmx->seam_mode) {
+	if (vmx->seam_mode && (type == INTR_TYPE_NMI_INTR || type == INTR_TYPE_EXT_INTR)) {
 		printk(KERN_WARNING "[opentdx] vector %d injected while in seam mode at 0x%lx\n", 
 				vector, kvm_rip_read(vcpu));
 
@@ -9313,6 +9313,11 @@ static __init int hardware_setup(void)
 		vmx_x86_ops.get_gpa_without_keyid = gpa_without_keyid;
 		vmx_x86_ops.get_gpa_with_keyid = gpa_with_keyid;
 		vmx_x86_ops.update_keyid_of_pages = vmx_update_keyid_of_pages;
+
+		vmx_x86_ops.get_seam_state = get_seam_state;
+		vmx_x86_ops.get_mktme_state = get_mktme_state;
+		vmx_x86_ops.get_mktme_entries = get_mktme_entries;
+		vmx_x86_ops.get_page_keyids = get_page_keyids;
 
 		r = seam_vmx_hardware_setup(kvm_vmx_exit_handlers);
 		if (r)

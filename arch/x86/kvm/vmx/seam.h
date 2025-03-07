@@ -139,4 +139,6 @@ int handle_seamret(struct kvm_vcpu *vcpu);
 int handle_seamops(struct kvm_vcpu *vcpu);
 __init int seam_vmx_hardware_setup(int (*exit_handlers[])(struct kvm_vcpu *));
 
+int get_seam_state(struct kvm_vcpu *vcpu, struct kvm_seam_state __user *user_kvm_seam_state);
+
 #endif

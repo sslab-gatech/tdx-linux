@@ -6390,6 +6390,46 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 		srcu_read_unlock(&vcpu->kvm->srcu, idx);
 		break;
 	}
+	case KVM_GET_SEAM_STATE: {
+		struct kvm_seam_state __user *user_kvm_seam_state = argp;
+
+		r = -EINVAL;
+		if (!kvm_x86_ops.get_seam_state)
+			break;
+
+		r = kvm_x86_ops.get_seam_state(vcpu, user_kvm_seam_state);
+		break;
+	}
+	case KVM_GET_MKTME_STATE: {
+		struct kvm_mktme_state __user *user_kvm_mktme_state = argp;
+
+		r = -EINVAL;
+		if (!kvm_x86_ops.get_mktme_state)
+			break;
+
+		r = kvm_x86_ops.get_mktme_state(vcpu, user_kvm_mktme_state);
+		break;
+	}
+	case KVM_GET_MKTME_ENTRIES: {
+		struct kvm_mktme_entries __user *user_mktme_entries = argp;
+
+		r = -EINVAL;
+		if (!kvm_x86_ops.get_mktme_entries)
+			break;
+
+		r = kvm_x86_ops.get_mktme_entries(vcpu, user_mktme_entries);
+		break;
+	}
+	case KVM_GET_PAGE_KEYIDS: {
+		struct kvm_page_keyids __user *user_page_keyids = argp;
+
+		r = -EINVAL;
+		if (!kvm_x86_ops.get_page_keyids)
+			break;
+
+		r = kvm_x86_ops.get_page_keyids(vcpu, user_page_keyids);
+		break;
+	}
 #ifdef CONFIG_KVM_HYPERV
 	case KVM_GET_SUPPORTED_HV_CPUID:
 		r = kvm_ioctl_get_supported_hv_cpuid(vcpu, argp);

@@ -1807,6 +1807,11 @@ struct kvm_x86_ops {
 	gpa_t (*get_gpa_without_keyid)(gpa_t gpa, struct kvm *kvm);
 	gpa_t (*get_gpa_with_keyid)(gpa_t gpa, u16 keyid, struct kvm *kvm);
 	void (*update_keyid_of_pages)(struct kvm_vcpu *vcpu, gpa_t gpa, u16 keyid, u64 *sptep);
+
+	int (*get_seam_state)(struct kvm_vcpu *vcpu, struct kvm_seam_state __user *user_kvm_seam_state);
+	int (*get_mktme_state)(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_kvm_mktme_state);
+	int (*get_mktme_entries)(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *user_kvm_mktme_entries);
+	int (*get_page_keyids)(struct kvm_vcpu *vcpu, struct kvm_page_keyids __user *user_kvm_page_keyids);
 };
 
 struct kvm_x86_nested_ops {
