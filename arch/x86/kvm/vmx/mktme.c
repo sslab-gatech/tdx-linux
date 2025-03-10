@@ -203,10 +203,73 @@ int get_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_k
 
 int get_mktme_entries(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *user_mktme_entries)
 {
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+    struct kvm_mktme_entries mktme_entries;
+    struct kvm_mktme_entry *entries;
+    int i;
+
+    mktme_entry_t *mktme_table = kvm_vmx->mktme_table;
+
+    if (copy_from_user(&mktme_entries, user_mktme_entries, sizeof(struct kvm_mktme_entries)))
+        return -EFAULT;
+
+    if (mktme_entries.num_entries != (1 << KEYID_BITS))
+        return -EINVAL;
+
+    entries = kzalloc(sizeof(struct kvm_mktme_entries) * mktme_entries.num_entries, GFP_KERNEL);
+    if (!entries)
+        return -ENOMEM;
+
+    for (i = 0; i < mktme_entries.num_entries; i++) {
+        entries[i].key_id = mktme_table[i].key_id;
+        memcpy(&entries[i].key, &mktme_table[i].key, 32);
+        entries[i].enc_mode = mktme_table[i].enc_mode;
+    }
+
+    if (copy_to_user(mktme_entries.entries, entries, sizeof(struct kvm_mktme_entries) * mktme_entries.num_entries)) {
+        kfree(entries);
+        return -EFAULT;
+    }
+
+    kfree(entries);
+
     return 0;
 }
 
 int get_page_keyids(struct kvm_vcpu *vcpu, struct kvm_page_keyids __user *user_page_keyids)
 {
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+    struct kvm_page_keyids page_keyids;
+
+    keyid_of_page_t *keyid_of_page;
+    struct kvm_page_keyid *pages;
+    unsigned long idx, real_gfn;
+
+    if (copy_from_user(&page_keyids, user_page_keyids, sizeof(struct kvm_page_keyids)))
+        return -EFAULT;
+
+    if (atomic_read(&kvm_vmx->num_keyed_pages) != page_keyids.num_pages)
+        return -EINVAL;
+
+    pages = kzalloc(sizeof(struct kvm_page_keyid) * page_keyids.num_pages, GFP_KERNEL);
+    if (!pages)
+        return -ENOMEM;
+
+    idx = 0;
+    xa_for_each_range(&kvm_vmx->keyid_of_pages, real_gfn, keyid_of_page, 0,
+            atomic_read(&kvm_vmx->num_keyed_pages) - 1) {
+    
+        pages[idx].gfn = real_gfn;
+        pages[idx].key_id = keyid_of_page->keyid;
+        idx++;
+    }
+
+    if (copy_to_user(page_keyids.pages, pages, sizeof(struct kvm_page_keyid) * page_keyids.num_pages)) {
+        kfree(pages);
+        return -EFAULT;
+    }
+
+    kfree(pages);
+
     return 0;
 }
