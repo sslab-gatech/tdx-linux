@@ -952,7 +952,7 @@ static int handle_vmread(struct kvm_vcpu* vcpu)
     struct x86_exception e;
     u32 instr_info;
     unsigned long encode;
-    u64 value;
+    u64 value = 0;
     gva_t gva = 0;
     int len, r;
 
