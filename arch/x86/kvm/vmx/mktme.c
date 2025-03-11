@@ -216,13 +216,13 @@ int get_mktme_entries(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *us
     if (mktme_entries.num_entries != (1 << KEYID_BITS))
         return -EINVAL;
 
-    entries = kzalloc(sizeof(struct kvm_mktme_entries) * mktme_entries.num_entries, GFP_KERNEL);
+    entries = kzalloc(sizeof(struct kvm_mktme_entry) * mktme_entries.num_entries, GFP_KERNEL);
     if (!entries)
         return -ENOMEM;
 
     for (i = 0; i < mktme_entries.num_entries; i++) {
         entries[i].key_id = mktme_table[i].key_id;
-        memcpy(&entries[i].key, &mktme_table[i].key, 32);
+        memcpy(entries[i].key, mktme_table[i].key, 32);
         entries[i].enc_mode = mktme_table[i].enc_mode;
     }
 
@@ -232,7 +232,6 @@ int get_mktme_entries(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *us
     }
 
     kfree(entries);
-
     return 0;
 }
 
@@ -251,25 +250,24 @@ int get_page_keyids(struct kvm_vcpu *vcpu, struct kvm_page_keyids __user *user_p
     if (atomic_read(&kvm_vmx->num_keyed_pages) != page_keyids.num_pages)
         return -EINVAL;
 
-    pages = kzalloc(sizeof(struct kvm_page_keyid) * page_keyids.num_pages, GFP_KERNEL);
+    pages = vmalloc(sizeof(struct kvm_page_keyid) * page_keyids.num_pages);
     if (!pages)
         return -ENOMEM;
 
     idx = 0;
-    xa_for_each_range(&kvm_vmx->keyid_of_pages, real_gfn, keyid_of_page, 0,
-            atomic_read(&kvm_vmx->num_keyed_pages) - 1) {
-    
+    xa_for_each(&kvm_vmx->keyid_of_pages, real_gfn, keyid_of_page) {
         pages[idx].gfn = real_gfn;
         pages[idx].key_id = keyid_of_page->keyid;
         idx++;
     }
 
+    KVM_BUG_ON(idx != page_keyids.num_pages, vcpu->kvm);
+
     if (copy_to_user(page_keyids.pages, pages, sizeof(struct kvm_page_keyid) * page_keyids.num_pages)) {
-        kfree(pages);
+        vfree(pages);
         return -EFAULT;
     }
 
-    kfree(pages);
-
+    vfree(pages);
     return 0;
 }

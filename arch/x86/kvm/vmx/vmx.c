@@ -8698,8 +8698,7 @@ static void vmx_vm_destroy(struct kvm *kvm)
 
 	kfree(kvm_vmx->mktme_table);
 
-	xa_for_each_range(&kvm_vmx->keyid_of_pages, idx, keyid_of_page, 0,
-		atomic_read(&kvm_vmx->num_keyed_pages) - 1) {
+	xa_for_each(&kvm_vmx->keyid_of_pages, idx, keyid_of_page) {
 
 		list_for_each_entry_safe(sptep_of_page, tmp, &keyid_of_page->page_list, node) {
 			list_del(&sptep_of_page->node);
