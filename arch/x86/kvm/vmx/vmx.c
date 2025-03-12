@@ -9317,6 +9317,8 @@ static __init int hardware_setup(void)
 		vmx_x86_ops.get_mktme_state = get_mktme_state;
 		vmx_x86_ops.get_mktme_entries = get_mktme_entries;
 		vmx_x86_ops.get_page_keyids = get_page_keyids;
+		vmx_x86_ops.set_seam_state = set_seam_state;
+		vmx_x86_ops.set_mktme_state = set_mktme_state;
 
 		r = seam_vmx_hardware_setup(kvm_vmx_exit_handlers);
 		if (r)

@@ -6390,6 +6390,16 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 		srcu_read_unlock(&vcpu->kvm->srcu, idx);
 		break;
 	}
+	case KVM_SET_SEAM_STATE: {
+		struct kvm_seam_state __user *user_kvm_seam_state = argp;
+
+		r = -EINVAL;
+		if (!kvm_x86_ops.set_seam_state)
+			break;
+
+		r = kvm_x86_ops.set_seam_state(vcpu, user_kvm_seam_state);
+		break;
+	}
 	case KVM_GET_SEAM_STATE: {
 		struct kvm_seam_state __user *user_kvm_seam_state = argp;
 
@@ -6398,6 +6408,16 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 			break;
 
 		r = kvm_x86_ops.get_seam_state(vcpu, user_kvm_seam_state);
+		break;
+	}
+	case KVM_SET_MKTME_STATE: {
+		struct kvm_mktme_state __user *user_kvm_mktme_state = argp;
+
+		r = -EINVAL;
+		if (!kvm_x86_ops.set_mktme_state)
+			break;
+
+		r = kvm_x86_ops.set_mktme_state(vcpu, user_kvm_mktme_state);
 		break;
 	}
 	case KVM_GET_MKTME_STATE: {

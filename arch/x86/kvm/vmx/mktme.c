@@ -185,7 +185,6 @@ int get_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_k
     struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
 
     struct kvm_mktme_state mktme_state = {
-        .msr_ia32_tme_capability = kvm_vmx->msr_ia32_tme_capability,
         .msr_ia32_tme_activate = kvm_vmx->msr_ia32_tme_activate,
 
         .num_mktme_keys = (1 << KEYID_BITS),
@@ -215,6 +214,8 @@ int get_mktme_entries(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *us
 
     if (mktme_entries.num_entries != (1 << KEYID_BITS))
         return -EINVAL;
+    else if (!mktme_entries.num_entries)
+        return 0;
 
     entries = kzalloc(sizeof(struct kvm_mktme_entry) * mktme_entries.num_entries, GFP_KERNEL);
     if (!entries)
@@ -249,6 +250,8 @@ int get_page_keyids(struct kvm_vcpu *vcpu, struct kvm_page_keyids __user *user_p
 
     if (atomic_read(&kvm_vmx->num_keyed_pages) != page_keyids.num_pages)
         return -EINVAL;
+    else if (!page_keyids.num_pages)
+        return 0;
 
     pages = vmalloc(sizeof(struct kvm_page_keyid) * page_keyids.num_pages);
     if (!pages)
@@ -270,4 +273,76 @@ int get_page_keyids(struct kvm_vcpu *vcpu, struct kvm_page_keyids __user *user_p
 
     vfree(pages);
     return 0;
+}
+
+int set_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_kvm_mktme_state)
+{
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+    struct kvm_mktme_state mktme_state = { 0, };
+    struct kvm_mktme_entry *mktme_entries = NULL;
+    struct kvm_page_keyid *page_keyids = NULL;
+    keyid_of_page_t *keyid_of_page;
+    gfn_t gfn;
+    int i, ret = 0;
+
+    if (copy_from_user(&mktme_state, user_kvm_mktme_state, sizeof(struct kvm_mktme_state)))
+        return -EFAULT;
+
+    kvm_vmx->msr_ia32_tme_activate = mktme_state.msr_ia32_tme_activate;
+
+    if (mktme_state.num_mktme_keys) {
+        mktme_entries = kzalloc(sizeof(struct kvm_mktme_entry) * mktme_state.num_mktme_keys, GFP_KERNEL);
+        if (copy_from_user(mktme_entries, mktme_state.mktme_entries, sizeof(struct kvm_mktme_entry) * mktme_state.num_mktme_keys)) {
+            ret = -EFAULT;
+            goto err;
+        }
+
+        for (i = 0; i < mktme_state.num_mktme_keys; i++) {
+            kvm_vmx->mktme_table[i].key_id = mktme_entries[i].key_id;
+            memcpy(kvm_vmx->mktme_table[i].key, mktme_entries[i].key, 32);
+            kvm_vmx->mktme_table[i].enc_mode = mktme_entries[i].enc_mode;
+        }
+    }
+
+    if (mktme_state.num_page_keyids) {
+        page_keyids = kzalloc(sizeof(struct kvm_page_keyid) * mktme_state.num_page_keyids, GFP_KERNEL);
+        if (copy_from_user(page_keyids, mktme_state.page_keyids, sizeof(struct kvm_page_keyid) * mktme_state.num_page_keyids)) {
+            ret = -EFAULT;
+            goto err;
+        }
+
+        for (i = 0; i < mktme_state.num_page_keyids; i++) {
+            gfn = page_keyids[i].gfn;
+            keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, gfn);
+            if (keyid_of_page) {
+                if (keyid_of_page->keyid) {
+                    printk(KERN_WARNING "[opentdx] 0x%llx already accessed with keyid %d\n", gfn, keyid_of_page->keyid);
+                    BUG();
+                }
+
+                keyid_of_page->keyid = page_keyids[i].key_id;
+
+                if (list_count_nodes(&keyid_of_page->page_list) > 1) {
+                    printk(KERN_WARNING "[opentdx] multiple aliased pages at 0x%llx\n", gfn);
+                    BUG();
+                }
+            } else {
+                keyid_of_page = kzalloc(sizeof(keyid_of_page_t), GFP_KERNEL);
+                keyid_of_page->keyid = page_keyids[i].key_id;
+                INIT_LIST_HEAD(&keyid_of_page->page_list);
+
+                if (xa_insert(&kvm_vmx->keyid_of_pages, page_keyids[i].gfn, keyid_of_page, GFP_KERNEL_ACCOUNT)) {
+                    printk(KERN_WARNING "[opentdx] keyid_of_page exists at 0x%llx\n", page_keyids[i].gfn);
+                    BUG();
+                }
+            }
+        }
+    }
+
+err:
+    if (mktme_entries)
+        kfree(mktme_entries);
+    if (page_keyids)
+        kfree(page_keyids);
+    return ret;
 }

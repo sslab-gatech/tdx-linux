@@ -147,5 +147,6 @@ int handle_pconfig(struct kvm_vcpu *vcpu);
 int get_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_kvm_mktme_state);
 int get_mktme_entries(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *user_mktme_entries);
 int get_page_keyids(struct kvm_vcpu *vcpu, struct kvm_page_keyids __user *user_page_keyids);
+int set_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_kvm_mktme_state);
 
 #endif

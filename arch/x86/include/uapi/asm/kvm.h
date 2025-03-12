@@ -569,7 +569,6 @@ struct kvm_page_keyids {
 };
 
 struct kvm_mktme_state {
-	__u64 msr_ia32_tme_capability;
 	__u64 msr_ia32_tme_activate;
 
 	__u32 num_mktme_keys;

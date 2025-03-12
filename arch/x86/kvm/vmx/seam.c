@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+
 /*  Copyright(c) 2021 Intel Corporation. */
 
 #include "asm/msr-index.h"
@@ -1116,6 +1116,42 @@ int get_seam_state(struct kvm_vcpu *vcpu, struct kvm_seam_state __user *user_kvm
 
     if (copy_to_user(user_kvm_seam_state, &seam_state, sizeof(seam_state)))
         return -EFAULT;
+
+    return 0;
+}
+
+int set_seam_state(struct kvm_vcpu *vcpu, struct kvm_seam_state __user *user_kvm_seam_state)
+{
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+    struct vcpu_vmx *vmx = to_vmx(vcpu);
+    struct kvm_seam_state seam_state;
+
+    if (copy_from_user(&seam_state, user_kvm_seam_state, sizeof(struct kvm_seam_state)))
+        return -EFAULT;
+
+    kvm_vmx->seamrr.configured = seam_state.seamrr.configured;
+    kvm_vmx->seamrr.locked = seam_state.seamrr.locked;
+    kvm_vmx->seamrr.enabled = seam_state.seamrr.enabled;
+    kvm_vmx->seamrr.base = seam_state.seamrr.base;
+    kvm_vmx->seamrr.size = seam_state.seamrr.size;
+
+    kvm_vmx->seam_extend.valid = seam_state.seam_extend.valid;
+    kvm_vmx->seam_extend.attributes = seam_state.seam_extend.attributes;
+    kvm_vmx->seam_extend.seam_ready = seam_state.seam_extend.seam_ready;
+    kvm_vmx->seam_extend.seam_under_debug = seam_state.seam_extend.seam_under_debug;
+    kvm_vmx->seam_extend.p_seamldr_ready = seam_state.seam_extend.p_seamldr_ready;
+
+    vmx->authenticated_code_execution_mode = seam_state.authenticated_code_execution_mode;
+    vmx->seam_mode = seam_state.seam_mode;
+    vmx->seam_vmptr = seam_state.seam_vmptr;
+    vmx->in_pseamldr = seam_state.in_pseamldr;
+    vmx->msr_ia32_bios_se_svn = seam_state.msr_ia32_bios_se_svn;
+    vmx->msr_ia32_bios_done = seam_state.msr_ia32_bios_done;
+    vmx->xapic_disable = seam_state.xapic_disable;
+
+    memcpy(kvm_vmx->seam_extend.tee_tcb_svn, seam_state.seam_extend.tee_tcb_svn, 16);
+    memcpy(kvm_vmx->seam_extend.mr_seam, seam_state.seam_extend.mr_seam, 48);
+    memcpy(kvm_vmx->seam_extend.mr_signer, seam_state.seam_extend.mr_signer, 48);
 
     return 0;
 }
