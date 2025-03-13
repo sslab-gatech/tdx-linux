@@ -194,7 +194,7 @@ int get_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_k
         .page_keyids = NULL,
     };
 
-    if (copy_to_user(user_kvm_mktme_state, &mktme_state, sizeof(mktme_state)))
+    if (copy_to_user(user_kvm_mktme_state, &mktme_state, sizeof(struct kvm_mktme_state)))
         return -EFAULT;
 
     return 0;
@@ -227,7 +227,7 @@ int get_mktme_entries(struct kvm_vcpu *vcpu, struct kvm_mktme_entries __user *us
         entries[i].enc_mode = mktme_table[i].enc_mode;
     }
 
-    if (copy_to_user(mktme_entries.entries, entries, sizeof(struct kvm_mktme_entries) * mktme_entries.num_entries)) {
+    if (copy_to_user(mktme_entries.entries, entries, sizeof(struct kvm_mktme_entry) * mktme_entries.num_entries)) {
         kfree(entries);
         return -EFAULT;
     }
@@ -305,7 +305,7 @@ int set_mktme_state(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_k
     }
 
     if (mktme_state.num_page_keyids) {
-        page_keyids = kzalloc(sizeof(struct kvm_page_keyid) * mktme_state.num_page_keyids, GFP_KERNEL);
+        page_keyids = vmalloc(sizeof(struct kvm_page_keyid) * mktme_state.num_page_keyids);
         if (copy_from_user(page_keyids, mktme_state.page_keyids, sizeof(struct kvm_page_keyid) * mktme_state.num_page_keyids)) {
             ret = -EFAULT;
             goto err;
@@ -343,6 +343,6 @@ err:
     if (mktme_entries)
         kfree(mktme_entries);
     if (page_keyids)
-        kfree(page_keyids);
+        vfree(page_keyids);
     return ret;
 }
