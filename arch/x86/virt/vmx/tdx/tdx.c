@@ -1744,6 +1744,25 @@ u64 tdh_mng_init(struct tdx_td *td, u64 td_params, u64 *extended_err)
 }
 EXPORT_SYMBOL_GPL(tdh_mng_init);
 
+u64 tdh_vp_get_regs(struct tdx_vp *vp, void *regs)
+{
+	printk(KERN_WARNING "tdh_vp_get_regs (0x%llx)\n", (long long unsigned int) regs);
+
+	// struct kvm_regs *tmp = kzalloc(PAGE_SIZE, GFP_KERNEL);
+
+	struct tdx_module_args args = {
+		.rcx = tdx_tdvpr_pa(vp),
+		.rdx = virt_to_phys(regs),
+	};
+
+	// memcpy(regs, tmp, sizeof(struct kvm_regs));
+
+	// kfree(tmp);
+
+	return seamcall(TDH_VP_GET_REGS, &args);
+}
+EXPORT_SYMBOL_GPL(tdh_vp_get_regs);
+
 u64 tdh_vp_init(struct tdx_vp *vp, u64 initial_rcx)
 {
 	struct tdx_module_args args = {

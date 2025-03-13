@@ -215,4 +215,6 @@ static inline void restore_boot_irq_mode(void) { }
 
 #endif
 
+void io_apic_print_entries(unsigned int apic, unsigned int nr_entries);
+
 #endif /* _ASM_X86_IO_APIC_H */

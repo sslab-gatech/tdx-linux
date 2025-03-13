@@ -1360,6 +1360,10 @@ static int tdx_emulate_io(struct kvm_vcpu *vcpu)
 	if (write) {
 		val = tdvmcall_a3_read(vcpu);
 		ret = ctxt->ops->pio_out_emulated(ctxt, size, port, &val, 1);
+
+		// if (size == 1 && port == 0x3f8) {
+		// 	printk(KERN_CONT "%c", (char) val);
+		// }
 	} else {
 		ret = ctxt->ops->pio_in_emulated(ctxt, size, port, &val, 1);
 	}
@@ -2275,8 +2279,8 @@ static int setup_tdparams_eptp_controls(struct kvm_cpuid2 *cpuid,
 
 	guest_pa = tdx_get_guest_phys_addr_bits(entry->eax);
 
-	if (guest_pa != 48 && guest_pa != 52)
-		return -EINVAL;
+	// if (guest_pa != 48 && guest_pa != 52)
+	// 	return -EINVAL;
 
 	if (guest_pa == 52 && !cpu_has_vmx_ept_5levels())
 		return -EINVAL;
@@ -3031,6 +3035,22 @@ out:
 	return r;
 }
 
+int tdx_vcpu_get_regs(struct kvm_vcpu *vcpu, struct kvm_regs *regs)
+{
+	struct vcpu_tdx *tdx = to_tdx(vcpu);
+
+	u64 err;
+
+	err = tdh_vp_get_regs(&tdx->vp, (void *) regs);
+	if (KVM_BUG_ON(err, vcpu->kvm)) {
+		printk(KERN_WARNING "Failed to get regs of TD - 0x%llx\n", err);
+
+		return -EIO;
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(tdx_vcpu_get_regs);
+
 static int tdx_vcpu_init(struct kvm_vcpu *vcpu, struct kvm_tdx_cmd *cmd)
 {
 	u64 apic_base;
@@ -3242,7 +3262,7 @@ int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 
 int tdx_gmem_private_max_mapping_level(struct kvm *kvm, kvm_pfn_t pfn)
 {
-	return PG_LEVEL_4K;
+	return PG_LEVEL_2M;
 }
 
 static int tdx_online_cpu(unsigned int cpu)

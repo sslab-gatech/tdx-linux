@@ -11640,6 +11640,12 @@ int kvm_arch_vcpu_ioctl_get_regs(struct kvm_vcpu *vcpu, struct kvm_regs *regs)
 	    vcpu->arch.guest_state_protected)
 		return -EINVAL;
 
+	if (vcpu->kvm->arch.vm_type == KVM_X86_TDX_VM) {
+		int r = kvm_x86_ops.vcpu_get_regs(vcpu, regs);
+		printk(KERN_WARNING "vcpu_get_regs=%d, regs->rip=0x%llx\n", r, (long long unsigned int) regs->rip);
+		return r;
+	}
+
 	vcpu_load(vcpu);
 	__get_regs(vcpu, regs);
 	vcpu_put(vcpu);
