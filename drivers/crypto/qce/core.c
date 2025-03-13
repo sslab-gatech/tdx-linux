@@ -277,7 +277,7 @@ err_mem_path_disable:
 	return ret;
 }
 
-static int qce_crypto_remove(struct platform_device *pdev)
+static void qce_crypto_remove(struct platform_device *pdev)
 {
 	struct qce_device *qce = platform_get_drvdata(pdev);
 
@@ -287,7 +287,6 @@ static int qce_crypto_remove(struct platform_device *pdev)
 	clk_disable_unprepare(qce->bus);
 	clk_disable_unprepare(qce->iface);
 	clk_disable_unprepare(qce->core);
-	return 0;
 }
 
 static const struct of_device_id qce_crypto_of_match[] = {

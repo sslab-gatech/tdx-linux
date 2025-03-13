@@ -1777,7 +1777,7 @@ static int hns_nic_change_mtu(struct net_device *ndev, int new_mtu)
 	}
 
 	/* finally, set new mtu to netdevice */
-	ndev->mtu = new_mtu;
+	WRITE_ONCE(ndev->mtu, new_mtu);
 
 out:
 	if (if_running) {
@@ -2393,7 +2393,7 @@ out_read_prop_fail:
 	return ret;
 }
 
-static int hns_nic_dev_remove(struct platform_device *pdev)
+static void hns_nic_dev_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct hns_nic_priv *priv = netdev_priv(ndev);
@@ -2422,7 +2422,6 @@ static int hns_nic_dev_remove(struct platform_device *pdev)
 	of_node_put(to_of_node(priv->fwnode));
 
 	free_netdev(ndev);
-	return 0;
 }
 
 static const struct of_device_id hns_enet_of_match[] = {

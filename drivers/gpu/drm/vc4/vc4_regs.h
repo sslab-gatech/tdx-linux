@@ -588,7 +588,7 @@ enum {
 # define VC4_HDMI_HORZA_HAP_MASK		VC4_MASK(12, 0)
 # define VC4_HDMI_HORZA_HAP_SHIFT		0
 
-/* Horizontal pack porch (htotal - hsync_end). */
+/* Horizontal back porch (htotal - hsync_end). */
 # define VC4_HDMI_HORZB_HBP_MASK		VC4_MASK(29, 20)
 # define VC4_HDMI_HORZB_HBP_SHIFT		20
 /* Horizontal sync pulse (hsync_end - hsync_start). */
@@ -777,6 +777,7 @@ enum {
 # define VC4_HD_VID_CTL_CLRSYNC			BIT(24)
 # define VC4_HD_VID_CTL_CLRRGB			BIT(23)
 # define VC4_HD_VID_CTL_BLANKPIX		BIT(18)
+# define VC4_HD_VID_CTL_BLANK_INSERT_EN		BIT(16)
 
 # define VC4_HD_CSC_CTL_ORDER_MASK		VC4_MASK(7, 5)
 # define VC4_HD_CSC_CTL_ORDER_SHIFT		5

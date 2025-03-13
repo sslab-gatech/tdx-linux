@@ -389,13 +389,16 @@ bool ice_gnss_is_gps_present(struct ice_hw *hw)
 	if (!hw->func_caps.ts_func_info.src_tmr_owned)
 		return false;
 
+	if (!ice_is_gps_in_netlist(hw))
+		return false;
+
 #if IS_ENABLED(CONFIG_PTP_1588_CLOCK)
 	if (ice_is_e810t(hw)) {
 		int err;
 		u8 data;
 
-		err = ice_read_pca9575_reg_e810t(hw, ICE_PCA9575_P0_IN, &data);
-		if (err || !!(data & ICE_E810T_P0_GNSS_PRSNT_N))
+		err = ice_read_pca9575_reg(hw, ICE_PCA9575_P0_IN, &data);
+		if (err || !!(data & ICE_P0_GNSS_PRSNT_N))
 			return false;
 	} else {
 		return false;

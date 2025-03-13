@@ -2443,7 +2443,7 @@ static void rhine_remove_one_pci(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 
-static int rhine_remove_one_platform(struct platform_device *pdev)
+static void rhine_remove_one_platform(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct rhine_private *rp = netdev_priv(dev);
@@ -2453,8 +2453,6 @@ static int rhine_remove_one_platform(struct platform_device *pdev)
 	iounmap(rp->base);
 
 	free_netdev(dev);
-
-	return 0;
 }
 
 static void rhine_shutdown_pci(struct pci_dev *pdev)

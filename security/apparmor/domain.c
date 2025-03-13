@@ -9,7 +9,6 @@
  */
 
 #include <linux/errno.h>
-#include <linux/fdtable.h>
 #include <linux/fs.h>
 #include <linux/file.h>
 #include <linux/mount.h>
@@ -31,7 +30,7 @@
 
 /**
  * may_change_ptraced_domain - check if can change profile on ptraced task
- * @cred: cred of task changing domain
+ * @to_cred: cred of task changing domain
  * @to_label: profile to change to  (NOT NULL)
  * @info: message if there is an error
  *
@@ -77,7 +76,7 @@ out:
 /**** TODO: dedup to aa_label_match - needs perm and dfa, merging
  * specifically this is an exact copy of aa_label_match except
  * aa_compute_perms is replaced with aa_compute_fperms
- * and policy.dfa with file.dfa
+ * and policy->dfa with file->dfa
  ****/
 /* match a profile and its associated ns component if needed
  * Assumes visibility test has already been done.
@@ -93,16 +92,16 @@ static inline aa_state_t match_component(struct aa_profile *profile,
 	const char *ns_name;
 
 	if (stack)
-		state = aa_dfa_match(rules->file.dfa, state, "&");
+		state = aa_dfa_match(rules->file->dfa, state, "&");
 	if (profile->ns == tp->ns)
-		return aa_dfa_match(rules->file.dfa, state, tp->base.hname);
+		return aa_dfa_match(rules->file->dfa, state, tp->base.hname);
 
 	/* try matching with namespace name and then profile */
 	ns_name = aa_ns_name(profile->ns, tp->ns, true);
-	state = aa_dfa_match_len(rules->file.dfa, state, ":", 1);
-	state = aa_dfa_match(rules->file.dfa, state, ns_name);
-	state = aa_dfa_match_len(rules->file.dfa, state, ":", 1);
-	return aa_dfa_match(rules->file.dfa, state, tp->base.hname);
+	state = aa_dfa_match_len(rules->file->dfa, state, ":", 1);
+	state = aa_dfa_match(rules->file->dfa, state, ns_name);
+	state = aa_dfa_match_len(rules->file->dfa, state, ":", 1);
+	return aa_dfa_match(rules->file->dfa, state, tp->base.hname);
 }
 
 /**
@@ -150,12 +149,12 @@ next:
 	label_for_each_cont(i, label, tp) {
 		if (!aa_ns_visible(profile->ns, tp->ns, subns))
 			continue;
-		state = aa_dfa_match(rules->file.dfa, state, "//&");
+		state = aa_dfa_match(rules->file->dfa, state, "//&");
 		state = match_component(profile, tp, false, state);
 		if (!state)
 			goto fail;
 	}
-	*perms = *(aa_lookup_fperms(&(rules->file), state, &cond));
+	*perms = *(aa_lookup_fperms(rules->file, state, &cond));
 	aa_apply_modes_to_perms(profile, perms);
 	if ((perms->allow & request) != request)
 		return -EACCES;
@@ -210,7 +209,7 @@ static int label_components_match(struct aa_profile *profile,
 	return 0;
 
 next:
-	tmp = *(aa_lookup_fperms(&(rules->file), state, &cond));
+	tmp = *(aa_lookup_fperms(rules->file, state, &cond));
 	aa_apply_modes_to_perms(profile, &tmp);
 	aa_perms_accum(perms, &tmp);
 	label_for_each_cont(i, label, tp) {
@@ -219,7 +218,7 @@ next:
 		state = match_component(profile, tp, stack, start);
 		if (!state)
 			goto fail;
-		tmp = *(aa_lookup_fperms(&(rules->file), state, &cond));
+		tmp = *(aa_lookup_fperms(rules->file, state, &cond));
 		aa_apply_modes_to_perms(profile, &tmp);
 		aa_perms_accum(perms, &tmp);
 	}
@@ -272,6 +271,7 @@ static int label_match(struct aa_profile *profile, struct aa_label *label,
  * @stack: whether this is a stacking request
  * @request: requested perms
  * @start: state to start matching in
+ * @perms: Returns computed perms (NOT NULL)
  *
  *
  * Returns: permission set
@@ -316,7 +316,7 @@ static int aa_xattrs_match(const struct linux_binprm *bprm,
 	might_sleep();
 
 	/* transition from exec match to xattr set */
-	state = aa_dfa_outofband_transition(attach->xmatch.dfa, state);
+	state = aa_dfa_outofband_transition(attach->xmatch->dfa, state);
 	d = bprm->file->f_path.dentry;
 
 	for (i = 0; i < attach->xattr_count; i++) {
@@ -330,20 +330,20 @@ static int aa_xattrs_match(const struct linux_binprm *bprm,
 			 * that not present xattr can be distinguished from a 0
 			 * length value or rule that matches any value
 			 */
-			state = aa_dfa_null_transition(attach->xmatch.dfa,
+			state = aa_dfa_null_transition(attach->xmatch->dfa,
 						       state);
 			/* Check xattr value */
-			state = aa_dfa_match_len(attach->xmatch.dfa, state,
+			state = aa_dfa_match_len(attach->xmatch->dfa, state,
 						 value, size);
-			index = ACCEPT_TABLE(attach->xmatch.dfa)[state];
-			perm = attach->xmatch.perms[index].allow;
+			index = ACCEPT_TABLE(attach->xmatch->dfa)[state];
+			perm = attach->xmatch->perms[index].allow;
 			if (!(perm & MAY_EXEC)) {
 				ret = -EINVAL;
 				goto out;
 			}
 		}
 		/* transition to next element */
-		state = aa_dfa_outofband_transition(attach->xmatch.dfa, state);
+		state = aa_dfa_outofband_transition(attach->xmatch->dfa, state);
 		if (size < 0) {
 			/*
 			 * No xattr match, so verify if transition to
@@ -366,11 +366,11 @@ out:
 
 /**
  * find_attach - do attachment search for unconfined processes
- * @bprm - binprm structure of transitioning task
+ * @bprm: binprm structure of transitioning task
  * @ns: the current namespace  (NOT NULL)
- * @head - profile list to walk  (NOT NULL)
- * @name - to match against  (NOT NULL)
- * @info - info message if there was an error (NOT NULL)
+ * @head: profile list to walk  (NOT NULL)
+ * @name: to match against  (NOT NULL)
+ * @info: info message if there was an error (NOT NULL)
  *
  * Do a linear search on the profiles in the list.  There is a matching
  * preference where an exact match is preferred over a name which uses
@@ -412,16 +412,16 @@ restart:
 		 * as another profile, signal a conflict and refuse to
 		 * match.
 		 */
-		if (attach->xmatch.dfa) {
+		if (attach->xmatch->dfa) {
 			unsigned int count;
 			aa_state_t state;
 			u32 index, perm;
 
-			state = aa_dfa_leftmatch(attach->xmatch.dfa,
-					attach->xmatch.start[AA_CLASS_XMATCH],
+			state = aa_dfa_leftmatch(attach->xmatch->dfa,
+					attach->xmatch->start[AA_CLASS_XMATCH],
 					name, &count);
-			index = ACCEPT_TABLE(attach->xmatch.dfa)[state];
-			perm = attach->xmatch.perms[index].allow;
+			index = ACCEPT_TABLE(attach->xmatch->dfa)[state];
+			perm = attach->xmatch->perms[index].allow;
 			/* any accepting state means a valid match. */
 			if (perm & MAY_EXEC) {
 				int ret = 0;
@@ -524,7 +524,7 @@ struct aa_label *x_table_lookup(struct aa_profile *profile, u32 xindex,
 	/* TODO: move lookup parsing to unpack time so this is a straight
 	 *       index into the resultant label
 	 */
-	for (*name = rules->file.trans.table[index]; !label && *name;
+	for (*name = rules->file->trans.table[index]; !label && *name;
 	     *name = next_name(xtype, *name)) {
 		if (xindex & AA_X_CHILD) {
 			struct aa_profile *new_profile;
@@ -552,6 +552,7 @@ struct aa_label *x_table_lookup(struct aa_profile *profile, u32 xindex,
  * @name: name to lookup (NOT NULL)
  * @xindex: index into x transition table
  * @lookupname: returns: name used in lookup if one was specified (NOT NULL)
+ * @info: info message if there was an error (NOT NULL)
  *
  * find label for a transition index
  *
@@ -577,7 +578,7 @@ static struct aa_label *x_to_label(struct aa_profile *profile,
 		break;
 	case AA_X_TABLE:
 		/* TODO: fix when perm mapping done at unload */
-		stack = rules->file.trans.table[xindex & AA_X_INDEX_MASK];
+		stack = rules->file->trans.table[xindex & AA_X_INDEX_MASK];
 		if (*stack != '&') {
 			/* released by caller */
 			new = x_table_lookup(profile, xindex, lookupname);
@@ -635,8 +636,9 @@ static struct aa_label *profile_transition(const struct cred *subj_cred,
 	struct aa_ruleset *rules = list_first_entry(&profile->rules,
 						    typeof(*rules), list);
 	struct aa_label *new = NULL;
+	struct aa_profile *new_profile = NULL;
 	const char *info = NULL, *name = NULL, *target = NULL;
-	aa_state_t state = rules->file.start[AA_CLASS_FILE];
+	aa_state_t state = rules->file->start[AA_CLASS_FILE];
 	struct aa_perms perms = {};
 	bool nonewprivs = false;
 	int error = 0;
@@ -670,7 +672,7 @@ static struct aa_label *profile_transition(const struct cred *subj_cred,
 	}
 
 	/* find exec permissions for name */
-	state = aa_str_perms(&(rules->file), state, name, cond, &perms);
+	state = aa_str_perms(rules->file, state, name, cond, &perms);
 	if (perms.allow & MAY_EXEC) {
 		/* exec permission determine how to transition */
 		new = x_to_label(profile, bprm, name, perms.xindex, &target,
@@ -679,15 +681,18 @@ static struct aa_label *profile_transition(const struct cred *subj_cred,
 			/* hack ix fallback - improve how this is detected */
 			goto audit;
 		} else if (!new) {
-			error = -EACCES;
 			info = "profile transition not found";
-			/* remove MAY_EXEC to audit as failure */
+			/* remove MAY_EXEC to audit as failure or complaint */
 			perms.allow &= ~MAY_EXEC;
+			if (COMPLAIN_MODE(profile)) {
+				/* create null profile instead of failing */
+				goto create_learning_profile;
+			}
+			error = -EACCES;
 		}
 	} else if (COMPLAIN_MODE(profile)) {
+create_learning_profile:
 		/* no exec permission - learning mode */
-		struct aa_profile *new_profile = NULL;
-
 		new_profile = aa_new_learning_profile(profile, false, name,
 						      GFP_KERNEL);
 		if (!new_profile) {
@@ -708,8 +713,8 @@ static struct aa_label *profile_transition(const struct cred *subj_cred,
 
 	if (!(perms.xindex & AA_X_UNSAFE)) {
 		if (DEBUG_ON) {
-			dbg_printk("apparmor: scrubbing environment variables"
-				   " for %s profile=", name);
+			dbg_printk("apparmor: setting AT_SECURE for %s profile=",
+				   name);
 			aa_label_printk(new, GFP_KERNEL);
 			dbg_printk("\n");
 		}
@@ -736,7 +741,7 @@ static int profile_onexec(const struct cred *subj_cred,
 {
 	struct aa_ruleset *rules = list_first_entry(&profile->rules,
 						    typeof(*rules), list);
-	aa_state_t state = rules->file.start[AA_CLASS_FILE];
+	aa_state_t state = rules->file->start[AA_CLASS_FILE];
 	struct aa_perms perms = {};
 	const char *xname = NULL, *info = "change_profile onexec";
 	int error = -EACCES;
@@ -769,7 +774,7 @@ static int profile_onexec(const struct cred *subj_cred,
 	}
 
 	/* find exec permissions for name */
-	state = aa_str_perms(&(rules->file), state, xname, cond, &perms);
+	state = aa_str_perms(rules->file, state, xname, cond, &perms);
 	if (!(perms.allow & AA_MAY_ONEXEC)) {
 		info = "no change_onexec valid for executable";
 		goto audit;
@@ -778,7 +783,7 @@ static int profile_onexec(const struct cred *subj_cred,
 	 * onexec permission is linked to exec with a standard pairing
 	 * exec\0change_profile
 	 */
-	state = aa_dfa_null_transition(rules->file.dfa, state);
+	state = aa_dfa_null_transition(rules->file->dfa, state);
 	error = change_profile_perms(profile, onexec, stack, AA_MAY_ONEXEC,
 				     state, &perms);
 	if (error) {
@@ -788,8 +793,8 @@ static int profile_onexec(const struct cred *subj_cred,
 
 	if (!(perms.xindex & AA_X_UNSAFE)) {
 		if (DEBUG_ON) {
-			dbg_printk("apparmor: scrubbing environment "
-				   "variables for %s label=", xname);
+			dbg_printk("apparmor: setting AT_SECURE for %s label=",
+				   xname);
 			aa_label_printk(onexec, GFP_KERNEL);
 			dbg_printk("\n");
 		}
@@ -820,33 +825,19 @@ static struct aa_label *handle_onexec(const struct cred *subj_cred,
 	AA_BUG(!bprm);
 	AA_BUG(!buffer);
 
-	if (!stack) {
-		error = fn_for_each_in_ns(label, profile,
-				profile_onexec(subj_cred, profile, onexec, stack,
-					       bprm, buffer, cond, unsafe));
-		if (error)
-			return ERR_PTR(error);
-		new = fn_label_build_in_ns(label, profile, GFP_KERNEL,
-				aa_get_newest_label(onexec),
-				profile_transition(subj_cred, profile, bprm,
-						   buffer,
-						   cond, unsafe));
+	/* TODO: determine how much we want to loosen this */
+	error = fn_for_each_in_ns(label, profile,
+			profile_onexec(subj_cred, profile, onexec, stack,
+				       bprm, buffer, cond, unsafe));
+	if (error)
+		return ERR_PTR(error);
 
-	} else {
-		/* TODO: determine how much we want to loosen this */
-		error = fn_for_each_in_ns(label, profile,
-				profile_onexec(subj_cred, profile, onexec, stack, bprm,
-					       buffer, cond, unsafe));
-		if (error)
-			return ERR_PTR(error);
-		new = fn_label_build_in_ns(label, profile, GFP_KERNEL,
-				aa_label_merge(&profile->label, onexec,
-					       GFP_KERNEL),
-				profile_transition(subj_cred, profile, bprm,
-						   buffer,
-						   cond, unsafe));
-	}
-
+	new = fn_label_build_in_ns(label, profile, GFP_KERNEL,
+			stack ? aa_label_merge(&profile->label, onexec,
+					       GFP_KERNEL)
+			      : aa_get_newest_label(onexec),
+			profile_transition(subj_cred, profile, bprm,
+					   buffer, cond, unsafe));
 	if (new)
 		return new;
 
@@ -959,8 +950,8 @@ int apparmor_bprm_creds_for_exec(struct linux_binprm *bprm)
 
 	if (unsafe) {
 		if (DEBUG_ON) {
-			dbg_printk("scrubbing environment variables for %s "
-				   "label=", bprm->filename);
+			dbg_printk("setting AT_SECURE for %s label=",
+				   bprm->filename);
 			aa_label_printk(new, GFP_KERNEL);
 			dbg_printk("\n");
 		}
@@ -970,8 +961,8 @@ int apparmor_bprm_creds_for_exec(struct linux_binprm *bprm)
 	if (label->proxy != new->proxy) {
 		/* when transitioning clear unsafe personality bits */
 		if (DEBUG_ON) {
-			dbg_printk("apparmor: clearing unsafe personality "
-				   "bits. %s label=", bprm->filename);
+			dbg_printk("apparmor: clearing unsafe personality bits. %s label=",
+				   bprm->filename);
 			aa_label_printk(new, GFP_KERNEL);
 			dbg_printk("\n");
 		}
@@ -1298,7 +1289,7 @@ static int change_profile_perms_wrapper(const char *op, const char *name,
 
 	if (!error)
 		error = change_profile_perms(profile, target, stack, request,
-					     rules->file.start[AA_CLASS_FILE],
+					     rules->file->start[AA_CLASS_FILE],
 					     perms);
 	if (error)
 		error = aa_audit_file(subj_cred, profile, perms, op, request,
@@ -1308,6 +1299,8 @@ static int change_profile_perms_wrapper(const char *op, const char *name,
 
 	return error;
 }
+
+static const char *stack_msg = "change_profile unprivileged unconfined converted to stacking";
 
 /**
  * aa_change_profile - perform a one-way profile transition
@@ -1366,6 +1359,28 @@ int aa_change_profile(const char *fqname, int flags)
 			op = OP_STACK;
 		else
 			op = OP_CHANGE_PROFILE;
+	}
+
+	/* This should move to a per profile test. Requires pushing build
+	 * into callback
+	 */
+	if (!stack && unconfined(label) &&
+	    label == &labels_ns(label)->unconfined->label &&
+	    aa_unprivileged_unconfined_restricted &&
+	    /* TODO: refactor so this check is a fn */
+	    cap_capable(current_cred(), &init_user_ns, CAP_MAC_OVERRIDE,
+			CAP_OPT_NOAUDIT)) {
+		/* regardless of the request in this case apparmor
+		 * stacks against unconfined so admin set policy can't be
+		 * by-passed
+		 */
+		stack = true;
+		perms.audit = request;
+		(void) fn_for_each_in_ns(label, profile,
+				aa_audit_file(subj_cred, profile, &perms, op,
+					      request, auditname, NULL, target,
+					      GLOBAL_ROOT_UID, stack_msg, 0));
+		perms.audit = 0;
 	}
 
 	if (*fqname == '&') {
@@ -1475,7 +1490,7 @@ check:
 		}
 
 		/* full transition will be built in exec path */
-		error = aa_set_current_onexec(target, stack);
+		aa_set_current_onexec(target, stack);
 	}
 
 audit:

@@ -16,8 +16,10 @@
 #include <linux/types.h>
 
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_client_setup.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fbdev_dma.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_print.h>
 
@@ -55,6 +57,7 @@ static struct drm_driver logicvc_drm_driver = {
 	.minor				= 0,
 
 	DRM_GEM_DMA_DRIVER_OPS_VMAP_WITH_DUMB_CREATE(logicvc_drm_gem_dma_dumb_create),
+	DRM_FBDEV_DMA_DRIVER_OPS,
 };
 
 static struct regmap_config logicvc_drm_regmap_config = {
@@ -301,7 +304,6 @@ static int logicvc_drm_probe(struct platform_device *pdev)
 	struct regmap *regmap = NULL;
 	struct resource res;
 	void __iomem *base;
-	unsigned int preferred_bpp;
 	int irq;
 	int ret;
 
@@ -439,17 +441,7 @@ static int logicvc_drm_probe(struct platform_device *pdev)
 		goto error_mode;
 	}
 
-	switch (drm_dev->mode_config.preferred_depth) {
-	case 16:
-		preferred_bpp = 16;
-		break;
-	case 24:
-	case 32:
-	default:
-		preferred_bpp = 32;
-		break;
-	}
-	drm_fbdev_dma_setup(drm_dev, preferred_bpp);
+	drm_client_setup(drm_dev, NULL);
 
 	return 0;
 
@@ -482,6 +474,14 @@ static void logicvc_drm_remove(struct platform_device *pdev)
 	of_reserved_mem_device_release(dev);
 }
 
+static void logicvc_drm_shutdown(struct platform_device *pdev)
+{
+	struct logicvc_drm *logicvc = platform_get_drvdata(pdev);
+	struct drm_device *drm_dev = &logicvc->drm_dev;
+
+	drm_atomic_helper_shutdown(drm_dev);
+}
+
 static const struct of_device_id logicvc_drm_of_table[] = {
 	{ .compatible = "xylon,logicvc-3.02.a-display" },
 	{ .compatible = "xylon,logicvc-4.01.a-display" },
@@ -491,7 +491,8 @@ MODULE_DEVICE_TABLE(of, logicvc_drm_of_table);
 
 static struct platform_driver logicvc_drm_platform_driver = {
 	.probe		= logicvc_drm_probe,
-	.remove_new	= logicvc_drm_remove,
+	.remove		= logicvc_drm_remove,
+	.shutdown	= logicvc_drm_shutdown,
 	.driver		= {
 		.name		= "logicvc-drm",
 		.of_match_table	= logicvc_drm_of_table,

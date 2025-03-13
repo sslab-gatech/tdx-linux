@@ -2097,13 +2097,11 @@ static int stfsm_probe(struct platform_device *pdev)
 	return mtd_device_register(&fsm->mtd, NULL, 0);
 }
 
-static int stfsm_remove(struct platform_device *pdev)
+static void stfsm_remove(struct platform_device *pdev)
 {
 	struct stfsm *fsm = platform_get_drvdata(pdev);
 
 	WARN_ON(mtd_device_unregister(&fsm->mtd));
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP

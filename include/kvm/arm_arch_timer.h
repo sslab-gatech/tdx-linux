@@ -96,7 +96,7 @@ struct arch_timer_cpu {
 
 int __init kvm_timer_hyp_init(bool has_gic);
 int kvm_timer_enable(struct kvm_vcpu *vcpu);
-int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu);
+void kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu);
 void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu);
 void kvm_timer_sync_user(struct kvm_vcpu *vcpu);
 bool kvm_timer_should_notify_user(struct kvm_vcpu *vcpu);
@@ -146,6 +146,9 @@ u64 timer_get_cval(struct arch_timer_context *ctxt);
 /* CPU HP callbacks */
 void kvm_timer_cpu_up(void);
 void kvm_timer_cpu_down(void);
+
+/* CNTKCTL_EL1 valid bits as of DDI0487J.a */
+#define CNTKCTL_VALID_BITS	(BIT(17) | GENMASK_ULL(9, 0))
 
 static inline bool has_cntpoff(void)
 {

@@ -832,7 +832,7 @@ static int pm8xxx_gpio_probe(struct platform_device *pdev)
 	 * files which don't set the "gpio-ranges" property or systems that
 	 * utilize ACPI the driver has to call gpiochip_add_pin_range().
 	 */
-	if (!of_property_read_bool(pctrl->dev->of_node, "gpio-ranges")) {
+	if (!of_property_present(pctrl->dev->of_node, "gpio-ranges")) {
 		ret = gpiochip_add_pin_range(&pctrl->chip, dev_name(pctrl->dev),
 					     0, 0, pctrl->chip.ngpio);
 		if (ret) {
@@ -853,13 +853,11 @@ unregister_gpiochip:
 	return ret;
 }
 
-static int pm8xxx_gpio_remove(struct platform_device *pdev)
+static void pm8xxx_gpio_remove(struct platform_device *pdev)
 {
 	struct pm8xxx_gpio *pctrl = platform_get_drvdata(pdev);
 
 	gpiochip_remove(&pctrl->chip);
-
-	return 0;
 }
 
 static struct platform_driver pm8xxx_gpio_driver = {

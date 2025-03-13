@@ -8,6 +8,7 @@
 #include <linux/iopoll.h>
 #include <linux/interrupt.h>
 #include <linux/notifier.h>
+#include <linux/soc/qcom/qcom_aoss.h>
 #include "msm_drv.h"
 #include "a6xx_hfi.h"
 
@@ -96,16 +97,19 @@ struct a6xx_gmu {
 	/* For power domain callback */
 	struct notifier_block pd_nb;
 	struct completion pd_gate;
+
+	struct qmp *qmp;
+	struct a6xx_hfi_msg_bw_table *bw_table;
 };
 
 static inline u32 gmu_read(struct a6xx_gmu *gmu, u32 offset)
 {
-	return msm_readl(gmu->mmio + (offset << 2));
+	return readl(gmu->mmio + (offset << 2));
 }
 
 static inline void gmu_write(struct a6xx_gmu *gmu, u32 offset, u32 value)
 {
-	msm_writel(value, gmu->mmio + (offset << 2));
+	writel(value, gmu->mmio + (offset << 2));
 }
 
 static inline void
@@ -128,8 +132,8 @@ static inline u64 gmu_read64(struct a6xx_gmu *gmu, u32 lo, u32 hi)
 {
 	u64 val;
 
-	val = (u64) msm_readl(gmu->mmio + (lo << 2));
-	val |= ((u64) msm_readl(gmu->mmio + (hi << 2)) << 32);
+	val = (u64) readl(gmu->mmio + (lo << 2));
+	val |= ((u64) readl(gmu->mmio + (hi << 2)) << 32);
 
 	return val;
 }
@@ -140,12 +144,12 @@ static inline u64 gmu_read64(struct a6xx_gmu *gmu, u32 lo, u32 hi)
 
 static inline u32 gmu_read_rscc(struct a6xx_gmu *gmu, u32 offset)
 {
-	return msm_readl(gmu->rscc + (offset << 2));
+	return readl(gmu->rscc + (offset << 2));
 }
 
 static inline void gmu_write_rscc(struct a6xx_gmu *gmu, u32 offset, u32 value)
 {
-	msm_writel(value, gmu->rscc + (offset << 2));
+	writel(value, gmu->rscc + (offset << 2));
 }
 
 #define gmu_poll_timeout_rscc(gmu, addr, val, cond, interval, timeout) \

@@ -1028,6 +1028,7 @@ static struct nd_region *nd_region_create(struct nvdimm_bus *nvdimm_bus,
 
 	if (!nd_region)
 		return NULL;
+	nd_region->ndr_mappings = ndr_desc->num_mappings;
 	/* CXL pre-assigns memregion ids before creating nvdimm regions */
 	if (test_bit(ND_REGION_CXL, &ndr_desc->flags)) {
 		nd_region->id = ndr_desc->memregion;
@@ -1062,7 +1063,6 @@ static struct nd_region *nd_region_create(struct nvdimm_bus *nvdimm_bus,
 
 		get_device(&nvdimm->dev);
 	}
-	nd_region->ndr_mappings = ndr_desc->num_mappings;
 	nd_region->provider_data = ndr_desc->provider_data;
 	nd_region->nd_set = ndr_desc->nd_set;
 	nd_region->num_lanes = ndr_desc->num_lanes;
@@ -1270,4 +1270,4 @@ int nd_region_conflict(struct nd_region *nd_region, resource_size_t start,
 	return device_for_each_child(&nvdimm_bus->dev, &ctx, region_conflict);
 }
 
-MODULE_IMPORT_NS(DEVMEM);
+MODULE_IMPORT_NS("DEVMEM");
