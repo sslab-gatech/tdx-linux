@@ -1146,7 +1146,7 @@ void ioapic_zap_locks(void)
 	raw_spin_lock_init(&ioapic_lock);
 }
 
-static void io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
+void io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
 {
 	struct IO_APIC_route_entry entry;
 	char buf[256];
@@ -1170,6 +1170,7 @@ static void io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
 		}
 	}
 }
+EXPORT_SYMBOL_GPL(io_apic_print_entries);
 
 static void __init print_IO_APIC(int ioapic_idx)
 {

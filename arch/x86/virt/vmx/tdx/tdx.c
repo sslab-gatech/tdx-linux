@@ -29,6 +29,7 @@
 #include <linux/acpi.h>
 #include <linux/suspend.h>
 #include <linux/idr.h>
+#include <linux/kvm_host.h>
 #include <asm/page.h>
 #include <asm/special_insns.h>
 #include <asm/msr-index.h>
@@ -1506,9 +1507,9 @@ static inline u64 tdx_tdvpr_pa(struct tdx_vp *td)
  * Be conservative and make the code simpler by doing the CLFLUSH
  * unconditionally.
  */
-static void tdx_clflush_page(struct page *page)
+static void tdx_clflush_page(struct page *page, enum pg_level level)
 {
-	clflush_cache_range(page_to_virt(page), PAGE_SIZE);
+	clflush_cache_range(page_to_virt(page), KVM_HPAGE_SIZE(level));
 }
 
 u64 tdh_vp_enter(struct tdx_vp *td, struct tdx_module_args *args)
@@ -1526,13 +1527,14 @@ u64 tdh_mng_addcx(struct tdx_td *td, struct page *tdcs_page)
 		.rdx = tdx_tdr_pa(td),
 	};
 
-	tdx_clflush_page(tdcs_page);
+	tdx_clflush_page(tdcs_page, PG_LEVEL_4K);
 	return seamcall(TDH_MNG_ADDCX, &args);
 }
 EXPORT_SYMBOL_GPL(tdh_mng_addcx);
 
 u64 tdh_mem_page_add(struct tdx_td *td, u64 gpa, struct page *page, struct page *source, u64 *ext_err1, u64 *ext_err2)
 {
+	/* TDH.MEM.PAGE.ADD() supports only 4K page. tdx 4K page level = 0 */
 	struct tdx_module_args args = {
 		.rcx = gpa,
 		.rdx = tdx_tdr_pa(td),
@@ -1541,7 +1543,7 @@ u64 tdh_mem_page_add(struct tdx_td *td, u64 gpa, struct page *page, struct page 
 	};
 	u64 ret;
 
-	tdx_clflush_page(page);
+	tdx_clflush_page(page, PG_LEVEL_4K);
 	ret = seamcall_ret(TDH_MEM_PAGE_ADD, &args);
 
 	*ext_err1 = args.rcx;
@@ -1560,7 +1562,7 @@ u64 tdh_mem_sept_add(struct tdx_td *td, u64 gpa, int level, struct page *page, u
 	};
 	u64 ret;
 
-	tdx_clflush_page(page);
+	tdx_clflush_page(page, PG_LEVEL_4K);
 	ret = seamcall_ret(TDH_MEM_SEPT_ADD, &args);
 
 	*ext_err1 = args.rcx;
@@ -1577,7 +1579,7 @@ u64 tdh_vp_addcx(struct tdx_vp *vp, struct page *tdcx_page)
 		.rdx = tdx_tdvpr_pa(vp),
 	};
 
-	tdx_clflush_page(tdcx_page);
+	tdx_clflush_page(tdcx_page, PG_LEVEL_4K);
 	return seamcall(TDH_VP_ADDCX, &args);
 }
 EXPORT_SYMBOL_GPL(tdh_vp_addcx);
@@ -1591,7 +1593,7 @@ u64 tdh_mem_page_aug(struct tdx_td *td, u64 gpa, int level, struct page *page, u
 	};
 	u64 ret;
 
-	tdx_clflush_page(page);
+	tdx_clflush_page(page, tdx_sept_level_to_pg_level(level));
 	ret = seamcall_ret(TDH_MEM_PAGE_AUG, &args);
 
 	*ext_err1 = args.rcx;
@@ -1635,7 +1637,7 @@ u64 tdh_mng_create(struct tdx_td *td, u16 hkid)
 		.rdx = hkid,
 	};
 
-	tdx_clflush_page(td->tdr_page);
+	tdx_clflush_page(td->tdr_page, PG_LEVEL_4K);
 	return seamcall(TDH_MNG_CREATE, &args);
 }
 EXPORT_SYMBOL_GPL(tdh_mng_create);
@@ -1647,7 +1649,7 @@ u64 tdh_vp_create(struct tdx_td *td, struct tdx_vp *vp)
 		.rdx = tdx_tdr_pa(td),
 	};
 
-	tdx_clflush_page(vp->tdvpr_page);
+	tdx_clflush_page(vp->tdvpr_page, PG_LEVEL_4K);
 	return seamcall(TDH_VP_CREATE, &args);
 }
 EXPORT_SYMBOL_GPL(tdh_vp_create);
@@ -1741,6 +1743,25 @@ u64 tdh_mng_init(struct tdx_td *td, u64 td_params, u64 *extended_err)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(tdh_mng_init);
+
+u64 tdh_vp_get_regs(struct tdx_vp *vp, void *regs)
+{
+	printk(KERN_WARNING "tdh_vp_get_regs (0x%llx)\n", (long long unsigned int) regs);
+
+	// struct kvm_regs *tmp = kzalloc(PAGE_SIZE, GFP_KERNEL);
+
+	struct tdx_module_args args = {
+		.rcx = tdx_tdvpr_pa(vp),
+		.rdx = virt_to_phys(regs),
+	};
+
+	// memcpy(regs, tmp, sizeof(struct kvm_regs));
+
+	// kfree(tmp);
+
+	return seamcall(TDH_VP_GET_REGS, &args);
+}
+EXPORT_SYMBOL_GPL(tdh_vp_get_regs);
 
 u64 tdh_vp_init(struct tdx_vp *vp, u64 initial_rcx)
 {

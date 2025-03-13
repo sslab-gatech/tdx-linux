@@ -50,6 +50,9 @@
 #include <asm/spec-ctrl.h>
 #include <asm/vmx.h>
 
+#include <linux/miscdevice.h>
+#include <asm/io_apic.h>
+
 #include <trace/events/ipi.h>
 
 #include "capabilities.h"
@@ -5757,7 +5760,7 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	if (unlikely(allow_smaller_maxphyaddr && !kvm_vcpu_is_legal_gpa(vcpu, gpa)))
 		return kvm_emulate_instruction(vcpu, 0);
 
-	return __vmx_handle_ept_violation(vcpu, gpa, exit_qualification);
+	return __vmx_handle_ept_violation(vcpu, gpa, exit_qualification, PG_LEVEL_NONE);
 }
 
 static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
@@ -8455,11 +8458,54 @@ static void __exit vmx_cleanup_l1d_flush(void)
 	l1tf_vmx_mitigation = VMENTER_L1D_FLUSH_AUTO;
 }
 
+// Added for testing
+
+static long kvm_intel_dev_ioctl(struct file *filp,
+                               unsigned int ioctl, unsigned long arg)
+{
+       int ret;
+
+       printk(KERN_WARNING "kvm_intel_dev_ioctl\n");
+       switch (ioctl) {
+       case 0:
+            ret = true;
+            printk(KERN_WARNING "platform_tdx_enabled: %d\n", ret);
+            ret = vmx_enable_virtualization_cpu();
+            printk(KERN_WARNING "vmx_hardware_enable: %d\n", ret);
+            ret = tdx_cpu_enable();
+            printk(KERN_WARNING "tdx_cpu_enable: %d\n", ret);
+            ret = tdx_enable();
+            printk(KERN_WARNING "tdx_enable: %d\n", ret);
+            vmx_disable_virtualization_cpu();
+            printk(KERN_WARNING "vmx_hardware_disable: %d\n", ret);
+            break;
+		case 1:
+			printk(KERN_WARNING "received ioctl 1\n");
+			io_apic_print_entries(0, 37);
+       }
+       return 0;
+}
+
+static struct file_operations kvm_intel_chardev_ops = {
+       .unlocked_ioctl = kvm_intel_dev_ioctl,
+       .compat_ioctl   = kvm_intel_dev_ioctl,
+};
+
+static struct miscdevice kvm_intel_dev = {
+       KVM_INTEL_MINOR,
+       "kvm-intel",
+       &kvm_intel_chardev_ops,
+};
+
+///////////
+
 void vmx_exit(void)
 {
 	allow_smaller_maxphyaddr = false;
 
 	vmx_cleanup_l1d_flush();
+
+	misc_deregister(&kvm_intel_dev);
 }
 
 int __init vmx_init(void)
@@ -8505,6 +8551,12 @@ int __init vmx_init(void)
 	 */
 	if (!enable_ept)
 		allow_smaller_maxphyaddr = true;
+
+	r = misc_register(&kvm_intel_dev);
+	if (r) {
+		pr_err("Failed to register kvm-intel device\n");
+	}
+	printk(KERN_WARNING "registered kvm_intel_dev\n");
 
 	return 0;
 

@@ -151,6 +151,8 @@ void tdx_cache_reg(struct kvm_vcpu *vcpu, enum kvm_reg reg);
 
 int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp);
 
+int tdx_vcpu_get_regs(struct kvm_vcpu *vcpu, struct kvm_regs *regs);
+
 int tdx_sept_link_private_spt(struct kvm *kvm, gfn_t gfn,
 			      enum pg_level level, void *private_spt);
 int tdx_sept_free_private_spt(struct kvm *kvm, gfn_t gfn,

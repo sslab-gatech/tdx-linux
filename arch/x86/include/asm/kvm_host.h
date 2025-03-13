@@ -264,6 +264,9 @@ enum x86_intercept_stage;
 #define PFERR_FETCH_MASK	BIT(4)
 #define PFERR_PK_MASK		BIT(5)
 #define PFERR_SGX_MASK		BIT(15)
+#define PFERR_LEVEL_START_BIT	29
+#define PFERR_LEVEL_END_BIT		31
+#define PFERR_LEVEL_MASK		GENMASK_ULL(PFERR_LEVEL_END_BIT, PFERR_LEVEL_START_BIT)
 #define PFERR_GUEST_RMP_MASK	BIT_ULL(31)
 #define PFERR_GUEST_FINAL_MASK	BIT_ULL(32)
 #define PFERR_GUEST_PAGE_MASK	BIT_ULL(33)
@@ -282,6 +285,8 @@ enum x86_intercept_stage;
  */
 #define PFERR_PRIVATE_ACCESS   BIT_ULL(49)
 #define PFERR_SYNTHETIC_MASK   (PFERR_IMPLICIT_ACCESS | PFERR_PRIVATE_ACCESS)
+
+#define PFERR_LEVEL(err_code) (((err_code) & PFERR_LEVEL_MASK) >> PFERR_LEVEL_START_BIT)
 
 /* apic attention bits */
 #define KVM_APIC_CHECK_VAPIC	0
@@ -1869,6 +1874,8 @@ struct kvm_x86_ops {
 	int (*vm_copy_enc_context_from)(struct kvm *kvm, unsigned int source_fd);
 	int (*vm_move_enc_context_from)(struct kvm *kvm, unsigned int source_fd);
 	void (*guest_memory_reclaimed)(struct kvm *kvm);
+
+	int (*vcpu_get_regs)(struct kvm_vcpu *vcpu, struct kvm_regs *regs);
 
 	int (*get_feature_msr)(u32 msr, u64 *data);
 

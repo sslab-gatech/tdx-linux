@@ -47,6 +47,8 @@
 #define TDH_VP_WR			43
 #define TDH_SYS_CONFIG			45
 
+#define TDH_VP_GET_REGS			46
+
 /*
  * SEAMCALL leaf:
  *
