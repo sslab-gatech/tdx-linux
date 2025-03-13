@@ -1,0 +1,404 @@
+// SPDX-License-Identifier: GPL-2.0-only
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <math.h>
+
+#include "test_util.h"
+#include "kvm_util.h"
+#include "processor.h"
+#include "svm_util.h"
+#include "linux/psp-sev.h"
+#include "sev.h"
+
+
+#define XFEATURE_MASK_X87_AVX (XFEATURE_MASK_FP | XFEATURE_MASK_SSE | XFEATURE_MASK_YMM)
+
+static void guest_snp_code(void)
+{
+	GUEST_ASSERT(rdmsr(MSR_AMD64_SEV) & MSR_AMD64_SEV_ENABLED);
+	GUEST_ASSERT(rdmsr(MSR_AMD64_SEV) & MSR_AMD64_SEV_ES_ENABLED);
+	GUEST_ASSERT(rdmsr(MSR_AMD64_SEV) & MSR_AMD64_SEV_SNP_ENABLED);
+
+	wrmsr(MSR_AMD64_SEV_ES_GHCB, GHCB_MSR_TERM_REQ);
+	__asm__ __volatile__("rep; vmmcall");
+}
+
+static void guest_sev_es_code(void)
+{
+	/* TODO: Check CPUID after GHCB-based hypercall support is added. */
+	GUEST_ASSERT(rdmsr(MSR_AMD64_SEV) & MSR_AMD64_SEV_ENABLED);
+	GUEST_ASSERT(rdmsr(MSR_AMD64_SEV) & MSR_AMD64_SEV_ES_ENABLED);
+
+	/*
+	 * TODO: Add GHCB and ucall support for SEV-ES guests.  For now, simply
+	 * force "termination" to signal "done" via the GHCB MSR protocol.
+	 */
+	wrmsr(MSR_AMD64_SEV_ES_GHCB, GHCB_MSR_TERM_REQ);
+	__asm__ __volatile__("rep; vmmcall");
+}
+
+static void guest_sev_code(void)
+{
+	GUEST_ASSERT(this_cpu_has(X86_FEATURE_SEV));
+	GUEST_ASSERT(rdmsr(MSR_AMD64_SEV) & MSR_AMD64_SEV_ENABLED);
+
+	GUEST_DONE();
+}
+
+/* Stash state passed via VMSA before any compiled code runs.  */
+extern void guest_code_xsave(void);
+asm("guest_code_xsave:\n"
+    "mov $" __stringify(XFEATURE_MASK_X87_AVX) ", %eax\n"
+    "xor %edx, %edx\n"
+    "xsave (%rdi)\n"
+    "jmp guest_sev_es_code");
+
+static void compare_xsave(u8 *from_host, u8 *from_guest)
+{
+	int i;
+	bool bad = false;
+	for (i = 0; i < 4095; i++) {
+		if (from_host[i] != from_guest[i]) {
+			printf("mismatch at %02hhx | %02hhx %02hhx\n", i, from_host[i], from_guest[i]);
+			bad = true;
+		}
+	}
+
+	if (bad)
+		abort();
+}
+
+static void test_sync_vmsa(uint32_t type, uint32_t policy)
+{
+	struct kvm_vcpu *vcpu;
+	struct kvm_vm *vm;
+	vm_vaddr_t gva;
+	void *hva;
+
+	double x87val = M_PI;
+	struct kvm_xsave __attribute__((aligned(64))) xsave = { 0 };
+
+	TEST_ASSERT(type != KVM_X86_SEV_VM,
+		    "sync_vmsa only supported for SEV-ES and SNP VM types");
+
+	vm = vm_sev_create_with_one_vcpu(type, guest_code_xsave, &vcpu);
+	gva = vm_vaddr_alloc_shared(vm, PAGE_SIZE, KVM_UTIL_MIN_VADDR,
+				    MEM_REGION_TEST_DATA);
+	hva = addr_gva2hva(vm, gva);
+
+	vcpu_args_set(vcpu, 1, gva);
+
+	asm("fninit\n"
+	    "vpcmpeqb %%ymm4, %%ymm4, %%ymm4\n"
+	    "fldl %3\n"
+	    "xsave (%2)\n"
+	    "fstp %%st\n"
+	    : "=m"(xsave)
+	    : "A"(XFEATURE_MASK_X87_AVX), "r"(&xsave), "m" (x87val)
+	    : "ymm4", "st", "st(1)", "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)");
+	vcpu_xsave_set(vcpu, &xsave);
+
+	vm_sev_launch(vm, policy, NULL);
+
+	/* This page is shared, so make it decrypted.  */
+	memset(hva, 0, 4096);
+
+	vcpu_run(vcpu);
+
+	TEST_ASSERT(vcpu->run->exit_reason == KVM_EXIT_SYSTEM_EVENT,
+		    "Wanted SYSTEM_EVENT, got %s",
+		    exit_reason_str(vcpu->run->exit_reason));
+	TEST_ASSERT_EQ(vcpu->run->system_event.type, KVM_SYSTEM_EVENT_SEV_TERM);
+	TEST_ASSERT_EQ(vcpu->run->system_event.ndata, 1);
+	TEST_ASSERT_EQ(vcpu->run->system_event.data[0], GHCB_MSR_TERM_REQ);
+
+	compare_xsave((u8 *)&xsave, (u8 *)hva);
+
+	kvm_vm_free(vm);
+}
+
+static void sev_guest_status_assert(struct kvm_vm *vm, uint32_t type)
+{
+	struct kvm_sev_guest_status status;
+	bool cond;
+	int ret;
+
+	ret = __vm_sev_ioctl(vm, KVM_SEV_GUEST_STATUS, &status);
+	cond = type == KVM_X86_SEV_VM ? !ret : ret;
+	TEST_ASSERT(cond,
+		    "KVM_SEV_GUEST_STATUS should fail, invalid VM Type.");
+}
+
+static void test_sev_launch(void *guest_code, uint32_t type, uint64_t policy)
+{
+	struct kvm_vcpu *vcpu;
+	struct kvm_vm *vm;
+	struct ucall uc;
+	bool cond;
+	int ret;
+
+	vm = vm_sev_create_with_one_vcpu(type, guest_code, &vcpu);
+	ret = sev_vm_launch_start(vm, 0);
+	cond = type == KVM_X86_SEV_VM ? !ret : ret;
+	TEST_ASSERT(cond,
+		    "KVM_SEV_LAUNCH_START should fail, invalid policy.");
+
+	ret = sev_vm_launch_update(vm, policy);
+	cond = type == KVM_X86_SEV_VM ? !ret : ret;
+	TEST_ASSERT(cond,
+		    "KVM_SEV_LAUNCH_UPDATE should fail, invalid policy.");
+	sev_guest_status_assert(vm, type);
+
+	ret = sev_vm_launch_measure(vm, alloca(256));
+	cond = type == KVM_X86_SEV_VM ? !ret : ret;
+	TEST_ASSERT(cond,
+		    "KVM_SEV_LAUNCH_MEASURE should fail, invalid policy.");
+	sev_guest_status_assert(vm, type);
+
+	ret = sev_vm_launch_finish(vm);
+	cond = type == KVM_X86_SEV_VM ? !ret : ret;
+	TEST_ASSERT(cond,
+		    "KVM_SEV_LAUNCH_FINISH should fail, invalid policy.");
+	sev_guest_status_assert(vm, type);
+
+	vcpu_run(vcpu);
+	get_ucall(vcpu, &uc);
+	cond = type == KVM_X86_SEV_VM ?
+		vcpu->run->exit_reason == KVM_EXIT_IO :
+		vcpu->run->exit_reason == KVM_EXIT_FAIL_ENTRY;
+	TEST_ASSERT(cond,
+		    "vcpu_run should fail, invalid policy.");
+
+	kvm_vm_free(vm);
+}
+
+static int spawn_snp_launch_start(uint32_t type, uint64_t policy, uint8_t flags)
+{
+	struct kvm_vcpu *vcpu;
+	struct kvm_vm *vm;
+	int ret;
+
+	vm = vm_sev_create_with_one_vcpu(type, NULL, &vcpu);
+	ret = snp_vm_launch(vm, policy, flags);
+	kvm_vm_free(vm);
+
+	return ret;
+}
+
+static void test_snp_launch_start(uint32_t type, uint64_t policy)
+{
+	uint8_t i;
+	int ret;
+
+	ret = spawn_snp_launch_start(type, policy, 0);
+	TEST_ASSERT(!ret,
+		    "KVM_SEV_SNP_LAUNCH_START should not fail, invalid flag.");
+
+	for (i = 1; i < 8; i++) {
+		ret = spawn_snp_launch_start(type, policy, BIT(i));
+		TEST_ASSERT(ret && errno == EINVAL,
+			    "KVM_SEV_SNP_LAUNCH_START should fail, invalid flag.");
+	}
+
+	ret = spawn_snp_launch_start(type, 0, 0);
+	TEST_ASSERT(ret && errno == EINVAL,
+		    "KVM_SEV_SNP_LAUNCH_START should fail, invalid policy.");
+
+	ret = spawn_snp_launch_start(type, SNP_POLICY_SMT, 0);
+	TEST_ASSERT(ret && errno == EINVAL,
+		    "KVM_SEV_SNP_LAUNCH_START should fail, invalid policy.");
+
+	ret = spawn_snp_launch_start(type, SNP_POLICY_RSVD_MBO, 0);
+	TEST_ASSERT(ret && errno == EINVAL,
+		    "KVM_SEV_SNP_LAUNCH_START should fail, invalid policy.");
+
+	ret = spawn_snp_launch_start(type, SNP_POLICY_SMT | SNP_POLICY_RSVD_MBO |
+				     (255 * SNP_POLICY_ABI_MAJOR) |
+				     (255 * SNP_POLICY_ABI_MINOR), 0);
+	TEST_ASSERT(ret && errno == EIO,
+		    "KVM_SEV_SNP_LAUNCH_START should fail, invalid version.");
+}
+
+static void test_snp_launch_update(uint32_t type, uint64_t policy)
+{
+	struct kvm_vcpu *vcpu;
+	struct kvm_vm *vm;
+	int ret;
+
+	for (int pgtype = 0; pgtype <= KVM_SEV_SNP_PAGE_TYPE_CPUID; pgtype++) {
+		vm = vm_sev_create_with_one_vcpu(type, NULL, &vcpu);
+		snp_vm_launch(vm, policy, 0);
+		ret = snp_vm_launch_update(vm, pgtype);
+
+		switch (pgtype) {
+		case KVM_SEV_SNP_PAGE_TYPE_NORMAL:
+		case KVM_SEV_SNP_PAGE_TYPE_ZERO:
+		case KVM_SEV_SNP_PAGE_TYPE_UNMEASURED:
+		case KVM_SEV_SNP_PAGE_TYPE_SECRETS:
+			TEST_ASSERT(!ret,
+				    "KVM_SEV_SNP_LAUNCH_UPDATE should not fail, invalid Page type.");
+			break;
+		case KVM_SEV_SNP_PAGE_TYPE_CPUID:
+			TEST_ASSERT(ret && errno == EIO,
+				    "KVM_SEV_SNP_LAUNCH_UPDATE should fail, invalid Page type.");
+			break;
+		default:
+			TEST_ASSERT(ret && errno == EINVAL,
+				    "KVM_SEV_SNP_LAUNCH_UPDATE should fail, invalid Page type.");
+		}
+
+		kvm_vm_free(vm);
+	}
+}
+
+void test_snp_launch_finish(uint32_t type, uint64_t policy)
+{
+	struct kvm_vcpu *vcpu;
+	struct kvm_vm *vm;
+	int ret;
+
+	vm = vm_sev_create_with_one_vcpu(type, NULL, &vcpu);
+	snp_vm_launch(vm, policy, 0);
+	snp_vm_launch_update(vm, KVM_SEV_SNP_PAGE_TYPE_NORMAL);
+	ret = snp_vm_launch_finish(vm, 0);
+	TEST_ASSERT(!ret,
+		    "KVM_SEV_SNP_LAUNCH_FINISH should not fail, invalid flag.");
+	kvm_vm_free(vm);
+
+	for (int i = 1; i < 16; i++) {
+		vm = vm_sev_create_with_one_vcpu(type, NULL, &vcpu);
+		snp_vm_launch(vm, policy, 0);
+		snp_vm_launch_update(vm, KVM_SEV_SNP_PAGE_TYPE_NORMAL);
+		ret = snp_vm_launch_finish(vm, BIT(i));
+		TEST_ASSERT(ret && errno == EINVAL,
+			    "KVM_SEV_SNP_LAUNCH_FINISH should fail, invalid flag.");
+		kvm_vm_free(vm);
+	}
+}
+
+static void test_sev_ioctl(void *guest_code, uint32_t type, uint64_t policy)
+{
+	if (type == KVM_X86_SNP_VM) {
+		test_snp_launch_start(type, policy);
+		test_snp_launch_update(type, policy);
+		test_snp_launch_finish(type, policy);
+
+		return;
+	}
+
+	test_sev_launch(guest_code, type, policy);
+}
+
+static void test_sev(void *guest_code, uint32_t type, uint64_t policy)
+{
+	struct kvm_vcpu *vcpu;
+	struct kvm_vm *vm;
+	struct ucall uc;
+
+	test_sev_ioctl(guest_code, type, policy);
+
+	vm = vm_sev_create_with_one_vcpu(type, guest_code, &vcpu);
+
+	/* TODO: Validate the measurement is as expected. */
+	vm_sev_launch(vm, policy, NULL);
+
+	for (;;) {
+		vcpu_run(vcpu);
+
+		if (vm->type == KVM_X86_SEV_ES_VM || vm->type == KVM_X86_SNP_VM) {
+			TEST_ASSERT(vcpu->run->exit_reason == KVM_EXIT_SYSTEM_EVENT,
+				    "Wanted SYSTEM_EVENT, got %s",
+				    exit_reason_str(vcpu->run->exit_reason));
+			TEST_ASSERT_EQ(vcpu->run->system_event.type, KVM_SYSTEM_EVENT_SEV_TERM);
+			TEST_ASSERT_EQ(vcpu->run->system_event.ndata, 1);
+			TEST_ASSERT_EQ(vcpu->run->system_event.data[0], GHCB_MSR_TERM_REQ);
+			break;
+		}
+
+		switch (get_ucall(vcpu, &uc)) {
+		case UCALL_SYNC:
+			continue;
+		case UCALL_DONE:
+			return;
+		case UCALL_ABORT:
+			REPORT_GUEST_ASSERT(uc);
+		default:
+			TEST_FAIL("Unexpected exit: %s",
+				  exit_reason_str(vcpu->run->exit_reason));
+		}
+	}
+
+	kvm_vm_free(vm);
+}
+
+static void guest_shutdown_code(void)
+{
+	struct desc_ptr idt;
+
+	/* Clobber the IDT so that #UD is guaranteed to trigger SHUTDOWN. */
+	memset(&idt, 0, sizeof(idt));
+	set_idt(&idt);
+
+	__asm__ __volatile__("ud2");
+}
+
+static void test_sev_es_shutdown(void)
+{
+	struct kvm_vcpu *vcpu;
+	struct kvm_vm *vm;
+
+	uint32_t type = KVM_X86_SEV_ES_VM;
+
+	vm = vm_sev_create_with_one_vcpu(type, guest_shutdown_code, &vcpu);
+
+	vm_sev_launch(vm, SEV_POLICY_ES, NULL);
+
+	vcpu_run(vcpu);
+	TEST_ASSERT(vcpu->run->exit_reason == KVM_EXIT_SHUTDOWN,
+		    "Wanted SHUTDOWN, got %s",
+		    exit_reason_str(vcpu->run->exit_reason));
+
+	kvm_vm_free(vm);
+}
+
+int main(int argc, char *argv[])
+{
+	const u64 xf_mask = XFEATURE_MASK_X87_AVX;
+
+	TEST_REQUIRE(kvm_cpu_has(X86_FEATURE_SEV));
+
+	test_sev(guest_sev_code, KVM_X86_SEV_VM, SEV_POLICY_NO_DBG);
+	test_sev(guest_sev_code, KVM_X86_SEV_VM, 0);
+
+	if (kvm_cpu_has(X86_FEATURE_SEV_ES)) {
+		test_sev(guest_sev_es_code, KVM_X86_SEV_ES_VM, SEV_POLICY_ES | SEV_POLICY_NO_DBG);
+		test_sev(guest_sev_es_code, KVM_X86_SEV_ES_VM, SEV_POLICY_ES);
+
+		test_sev_es_shutdown();
+
+		if (kvm_has_cap(KVM_CAP_XCRS) &&
+		    (xgetbv(0) & kvm_cpu_supported_xcr0() & xf_mask) == xf_mask) {
+			test_sync_vmsa(KVM_X86_SEV_ES_VM, 0);
+			test_sync_vmsa(KVM_X86_SEV_ES_VM, SEV_POLICY_NO_DBG);
+		}
+	}
+
+	if (kvm_cpu_has(X86_FEATURE_SNP) && is_kvm_snp_supported()) {
+		test_sev(guest_snp_code, KVM_X86_SNP_VM, SNP_POLICY_SMT | SNP_POLICY_RSVD_MBO);
+		/* Test minimum firmware level */
+		test_sev(guest_snp_code, KVM_X86_SNP_VM,
+			 SNP_POLICY_SMT | SNP_POLICY_RSVD_MBO |
+			 (SNP_FW_REQ_VER_MAJOR * SNP_POLICY_ABI_MAJOR) |
+			 (SNP_FW_REQ_VER_MINOR * SNP_POLICY_ABI_MINOR));
+
+		if (kvm_has_cap(KVM_CAP_XCRS) &&
+		    (xgetbv(0) & kvm_cpu_supported_xcr0() & xf_mask) == xf_mask) {
+			test_sync_vmsa(KVM_X86_SNP_VM, SNP_POLICY_SMT | SNP_POLICY_RSVD_MBO);
+		}
+	}
+
+	return 0;
+}
