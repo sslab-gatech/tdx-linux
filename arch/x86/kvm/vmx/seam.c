@@ -316,9 +316,18 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 // TODO: 27.3.1.4 Checks on Guest RIP, RFLAGS, and SSP
 
     /* 27.3.2 Loading Guest State */
-    kvm_set_cr0(vcpu, cr0);
-    kvm_set_cr3(vcpu, cr3);
-    kvm_set_cr4(vcpu, cr4);
+    if (kvm_set_cr0(vcpu, cr0)) {
+        printk(KERN_WARNING "[opentdx] failed to set cr0 to %lx in seamret\n", cr0);
+        return 1;
+    }
+    if (kvm_set_cr4(vcpu, cr4)) {
+        printk(KERN_WARNING "[opentdx] failed to set cr4 to %lx in seamret\n", cr4);
+        return 1;
+    }
+    if (kvm_set_cr3(vcpu, cr3)) {
+        printk(KERN_WARNING "[opentdx] failed to set cr3 to %lx in seamret\n", cr3);
+        return 1;
+    }
 
     if (entry_ctls & VM_ENTRY_LOAD_DEBUG_CONTROLS) {
         kvm_set_dr(vcpu, 7, vmcs_read(GUEST_DR7));
@@ -415,8 +424,14 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     /* 28.5.1 Loading Host Control Registers, Debug Registers, MSRs */
 
 // TODO: Check CR0, CR3, CR4
-    kvm_set_cr0(vcpu, cr0);
-    kvm_set_cr3(vcpu, cr3);
+    if (kvm_set_cr0(vcpu, cr0)) {
+        printk(KERN_WARNING "[opentdx] failed to set cr0 to %lx in seamcall\n", cr0);
+        BUG();
+    }
+    if (kvm_set_cr3(vcpu, cr3)) {
+        printk(KERN_WARNING "[opentdx] failed to set cr3 to %lx in seamcall\n", cr3);
+        BUG();
+    }
 
     if (exit_ctls & VM_EXIT_HOST_ADDR_SPACE_SIZE)
         cr4 |= X86_CR4_PAE;
@@ -427,7 +442,10 @@ static void load_host_state(struct kvm_vcpu *vcpu, u8 *vmcs)
         printk_once(KERN_WARNING "[opentdx] do not support setting X86_CR4_CET\n");
         cr4 &= ~X86_CR4_CET;
     }
-    kvm_set_cr4(vcpu, cr4);
+    if (kvm_set_cr4(vcpu, cr4)) {
+        printk(KERN_WARNING "[opentdx] failed to set cr4 to %lx in seamcall\n", cr4);
+        BUG();
+    }
 
     kvm_set_dr(vcpu, 7, 0x400);
 // TODO: Handle clear UINV
