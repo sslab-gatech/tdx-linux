@@ -1618,11 +1618,12 @@ static int tdx_mem_page_accept(struct kvm *kvm, gfn_t gfn, enum pg_level level)
 {
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
 	int tdx_level = pg_level_to_tdx_sept_level(level);
+	gpa_t gpa = gfn_to_gpa(gfn);
 
 	u64 entry, level_state;
 	u64 err;
 
-	err = tdh_mem_page_accept(&kvm_tdx->td, gfn, tdx_level, &entry, &level_state);
+	err = tdh_mem_page_accept(&kvm_tdx->td, gpa, tdx_level, &entry, &level_state);
 	if (KVM_BUG_ON(err, kvm)) {
 		return -EIO;
 	}

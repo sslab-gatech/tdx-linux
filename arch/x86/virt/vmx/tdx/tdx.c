@@ -1553,11 +1553,11 @@ u64 tdh_mem_page_add(struct tdx_td *td, u64 gpa, struct page *page, struct page 
 }
 EXPORT_SYMBOL_GPL(tdh_mem_page_add);
 
-u64 tdh_mem_page_accept(struct tdx_td *td, u64 gfn, int tdx_level, u64 *ext_err1, u64 *ext_err2)
+u64 tdh_mem_page_accept(struct tdx_td *td, u64 gpa, int tdx_level, u64 *ext_err1, u64 *ext_err2)
 {
 	/* TDH.MEM.PAGE.ADD() supports only 4K page. tdx 4K page level = 0 */
 	struct tdx_module_args args = {
-		.rcx = gfn | tdx_level,
+		.rcx = gpa | tdx_level,
 		.rdx = tdx_tdr_pa(td),
 	};
 	u64 ret;
