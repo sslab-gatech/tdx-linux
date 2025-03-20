@@ -498,12 +498,13 @@ static int __must_check set_external_spte_present(struct kvm *kvm, tdp_ptep_t sp
 						 u64 new_spte, int level)
 {
 	bool was_present = is_shadow_present_pte(old_spte);
+	bool was_large = is_large_pte(old_spte);
 	bool is_present = is_shadow_present_pte(new_spte);
 	bool is_leaf = is_present && is_last_spte(new_spte, level);
 	kvm_pfn_t new_pfn = spte_to_pfn(new_spte);
 	int ret = 0;
 
-	KVM_BUG_ON(was_present, kvm);
+	KVM_BUG_ON(was_present && !was_large, kvm);
 
 	lockdep_assert_held(&kvm->mmu_lock);
 	/*
@@ -937,10 +938,14 @@ bool kvm_tdp_mmu_zap_sp(struct kvm *kvm, struct kvm_mmu_page *sp)
  * the caller must ensure it does not supply too large a GFN range, or the
  * operation can cause a soft lockup.
  */
+static int tdp_mmu_split_huge_page(struct kvm *kvm, struct tdp_iter *iter,
+				   struct kvm_mmu_page *sp, bool shared);
+
 static bool tdp_mmu_zap_leafs(struct kvm *kvm, struct kvm_mmu_page *root,
 			      gfn_t start, gfn_t end, bool can_yield, bool flush)
 {
 	struct tdp_iter iter;
+	struct kvm_mmu_page *sp;
 
 	end = min(end, tdp_mmu_max_gfn_exclusive());
 
@@ -959,7 +964,25 @@ static bool tdp_mmu_zap_leafs(struct kvm *kvm, struct kvm_mmu_page *root,
 		    !is_last_spte(iter.old_spte, iter.level))
 			continue;
 
-		tdp_mmu_iter_set_spte(kvm, &iter, SHADOW_NONPRESENT_VALUE);
+
+		if ((start > iter.gfn || end < iter.gfn + KVM_PAGES_PER_HPAGE(iter.level)) &&
+			is_mirror_sptep(iter.sptep) && is_large_pte(iter.old_spte)) {
+			/* In case of zapping partial pages from huge page of mirrored SPT,
+			 * we should repopulate all unzapped leaf pages */
+			KVM_BUG_ON(iter.level != PG_LEVEL_2M, kvm);
+
+			sp = kmem_cache_alloc(mmu_page_header_cache, __GFP_ZERO | GFP_ATOMIC | __GFP_ACCOUNT);
+			sp->spt = (u64 *) __get_free_page(GFP_ATOMIC | __GFP_ACCOUNT);
+			memset64(sp->spt, SHADOW_NONPRESENT_VALUE, PAGE_SIZE / sizeof(u64));
+
+			tdp_mmu_init_child_sp(sp, &iter);
+			sp->external_spt = (u64 *) __get_free_page(__GFP_ZERO | GFP_ATOMIC | __GFP_ACCOUNT);
+
+			// sp->nx_huge_page_disallowed = fault->huge_page_disallowed;
+			tdp_mmu_split_huge_page(kvm, &iter, sp, true);
+		} else {
+			tdp_mmu_iter_set_spte(kvm, &iter, SHADOW_NONPRESENT_VALUE);
+		}
 
 		/*
 		 * Zappings SPTEs in invalid roots doesn't require a TLB flush,
@@ -1480,14 +1503,15 @@ static int tdp_mmu_split_huge_page(struct kvm *kvm, struct tdp_iter *iter,
 {
 	const u64 huge_spte = iter->old_spte;
 	const int level = iter->level;
-	int ret, i;
+	int ret = 0, i;
 
 	/*
 	 * No need for atomics when writing to sp->spt since the page table has
 	 * not been linked in yet and thus is not reachable from any other CPU.
 	 */
-	for (i = 0; i < SPTE_ENT_PER_PAGE; i++)
+	for (i = 0; i < SPTE_ENT_PER_PAGE; i++) {
 		sp->spt[i] = make_small_spte(kvm, huge_spte, sp->role, i);
+	}
 
 	/*
 	 * Replace the huge spte with a pointer to the populated lower level
@@ -1497,9 +1521,34 @@ static int tdp_mmu_split_huge_page(struct kvm *kvm, struct tdp_iter *iter,
 	 * correctness standpoint since the translation will be the same either
 	 * way.
 	 */
-	ret = tdp_mmu_link_sp(kvm, iter, sp, shared);
-	if (ret)
-		goto out;
+	if (is_mirror_sptep(iter->sptep)) {
+		KVM_BUG_ON(iter->level != PG_LEVEL_2M, kvm);
+
+		if (static_call(kvm_x86_remove_external_spte)(kvm, iter->gfn, PG_LEVEL_2M, spte_to_pfn(iter->old_spte))) {
+			printk(KERN_WARNING "[opentdx] failed to remove external spte\n");
+			BUG();
+		}
+		
+		if(tdp_mmu_link_sp(kvm, iter, sp, shared)) {
+			printk(KERN_WARNING "[opentdx] failed to link spte\n");
+			BUG();
+		}
+
+		for (i = 0; i < SPTE_ENT_PER_PAGE; i++) {
+			if (static_call(kvm_x86_set_external_spte)(kvm, iter->gfn + i, PG_LEVEL_4K, spte_to_pfn(sp->spt[i]))) {
+				printk(KERN_WARNING "[opentdx] failed to set external spte\n");
+				BUG();
+			}
+			if (static_call(kvm_x86_accept_private_page)(kvm, iter->gfn + i, PG_LEVEL_4K)) {
+				printk(KERN_WARNING "[opentdx] failed to accept external spte\n");
+				BUG();
+			}
+		}
+	} else {
+		ret = tdp_mmu_link_sp(kvm, iter, sp, shared);
+		if (ret)
+			goto out;
+	}
 
 	/*
 	 * tdp_mmu_link_sp_atomic() will handle subtracting the huge page we
