@@ -159,6 +159,8 @@ int tdx_sept_free_private_spt(struct kvm *kvm, gfn_t gfn,
 			      enum pg_level level, void *private_spt);
 int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
 			      enum pg_level level, kvm_pfn_t pfn);
+int tdx_sept_accept_private_page(struct kvm *kvm, gfn_t gfn, 
+				enum pg_level level);
 int tdx_sept_remove_private_spte(struct kvm *kvm, gfn_t gfn,
 				 enum pg_level level, kvm_pfn_t pfn);
 

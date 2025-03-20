@@ -1616,8 +1616,8 @@ static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
 
 static int tdx_mem_page_accept(struct kvm *kvm, gfn_t gfn, enum pg_level level)
 {
-	int tdx_level = pg_level_to_tdx_sept_level(level);
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
+	int tdx_level = pg_level_to_tdx_sept_level(level);
 
 	u64 entry, level_state;
 	u64 err;
@@ -1681,6 +1681,11 @@ int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
 		return tdx_mem_page_aug(kvm, gfn, level, pfn_to_page(pfn));
 
 	return tdx_mem_page_record_premap_cnt(kvm, gfn, level, pfn);
+}
+
+int tdx_sept_accept_private_page(struct kvm *kvm, gfn_t gfn, enum pg_level level)
+{
+	return tdx_mem_page_accept(kvm, gfn, level);
 }
 
 static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
