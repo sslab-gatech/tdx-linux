@@ -7456,7 +7456,8 @@ static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 	vector = idt_vectoring_info & VECTORING_INFO_VECTOR_MASK;
 	type = idt_vectoring_info & VECTORING_INFO_TYPE_MASK;
 
-	if (vmx->seam_mode && (type == INTR_TYPE_NMI_INTR || type == INTR_TYPE_EXT_INTR)) {
+	if (vmx->seam_mode && !is_guest_mode(vcpu) 
+		&& (type == INTR_TYPE_NMI_INTR || type == INTR_TYPE_EXT_INTR)) {
 		printk(KERN_WARNING "[opentdx] vector %d injected while in seam mode at 0x%lx\n", 
 				vector, kvm_rip_read(vcpu));
 
