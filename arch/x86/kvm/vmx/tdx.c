@@ -1614,6 +1614,22 @@ static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
 	return 0;
 }
 
+static int tdx_mem_page_accept(struct kvm *kvm, gfn_t gfn, enum pg_level level)
+{
+	int tdx_level = pg_level_to_tdx_sept_level(level);
+	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
+
+	u64 entry, level_state;
+	u64 err;
+
+	err = tdh_mem_page_accept(&kvm_tdx->td, gfn, tdx_level, &entry, &level_state);
+	if (KVM_BUG_ON(err, kvm)) {
+		return -EIO;
+	}
+
+	return 0;
+}
+
 /*
  * KVM_TDX_INIT_MEM_REGION calls kvm_gmem_populate() to get guest pages and
  * tdx_gmem_post_populate() to premap page table pages into private EPT.
