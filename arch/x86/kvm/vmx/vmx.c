@@ -6079,6 +6079,7 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	gfn_t real_gfn;
 	u64 error_code;
 	u16 keyid;
+	bool is_guest = is_guest_mode(vcpu);
 
 	exit_qualification = vmx_get_exit_qual(vcpu);
 
@@ -6125,6 +6126,9 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	if (unlikely(allow_smaller_maxphyaddr && !kvm_vcpu_is_legal_gpa(vcpu, gpa)))
 		return kvm_emulate_instruction(vcpu, 0);
 
+	if (is_guest)
+		goto handle_page_fault;
+
 	keyid = keyid_of(gpa, vcpu->kvm);
 	real_gfn = gpa_without_keyid(gpa, vcpu->kvm) >> PAGE_SHIFT;
 	keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, real_gfn);
@@ -6152,6 +6156,7 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 		printk(KERN_WARNING "[opentdx] mktme violation: access to 0x%llx (keyid: %d) unsupported", gpa, keyid);
 	}
 
+handle_page_fault:
 	return kvm_mmu_page_fault(vcpu, gpa, error_code, NULL, 0);
 }
 

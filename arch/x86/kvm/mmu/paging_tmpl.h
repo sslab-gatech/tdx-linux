@@ -324,7 +324,12 @@ static int FNAME(walk_addr_generic)(struct guest_walker *walker,
 	trace_kvm_mmu_pagetable_walk(addr, access);
 retry_walk:
 	walker->level = mmu->cpu_role.base.level;
-	pte           = kvm_mmu_get_guest_pgd(vcpu, mmu);
+#if PTTYPE == PTTYPE_EPT
+	pte			  = !!(addr & (1ULL << (vcpu->arch.maxphyaddr - 1))) ?
+					  mmu->get_guest_pgd_shared(vcpu) : mmu->get_guest_pgd(vcpu);
+#else
+	pte 		  = kvm_mmu_get_guest_pgd(vcpu, mmu);
+#endif
 	have_ad       = PT_HAVE_ACCESSED_DIRTY(mmu);
 
 #if PTTYPE == 64
@@ -378,6 +383,8 @@ retry_walk:
 
 		real_gpa = kvm_translate_gpa(vcpu, mmu, gfn_to_gpa(table_gfn),
 					     nested_access, &walker->fault);
+		if (kvm_x86_ops.get_keyid_of && kvm_x86_ops.get_keyid_of(real_gpa, vcpu->kvm))
+			BUG();
 
 		/*
 		 * FIXME: This can happen if emulation (for of an INS/OUTS
