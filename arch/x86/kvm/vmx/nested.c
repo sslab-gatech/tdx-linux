@@ -18,6 +18,7 @@
 #include "x86.h"
 #include "smm.h"
 #include "td.h"
+#include "virt_excpt.h"
 
 static bool __read_mostly enable_shadow_vmcs = 1;
 module_param_named(enable_shadow_vmcs, enable_shadow_vmcs, bool, S_IRUGO);
@@ -412,6 +413,8 @@ static void nested_ept_inject_page_fault(struct kvm_vcpu *vcpu,
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	u32 vm_exit_reason;
 	unsigned long exit_qualification = vcpu->arch.exit_qualification;
+	struct kvm_ve_info ve_info;
+	gpa_t ve_info_addr;
 
 	if (vmx->nested.pml_full) {
 		vm_exit_reason = EXIT_REASON_PML_FULL;
@@ -432,6 +435,26 @@ static void nested_ept_inject_page_fault(struct kvm_vcpu *vcpu,
 		 */
 		nested_ept_invalidate_addr(vcpu, vmcs12->ept_pointer,
 					   fault->address);
+	}
+
+	if (fault->vector == VE_VECTOR) {
+		KVM_BUG_ON(vmx->nested.pml_full, vcpu->kvm);
+
+		ve_info.exit_reason = vm_exit_reason;
+		ve_info.reserved = 0xffffffff;
+		ve_info.exit_qual = exit_qualification;
+		ve_info.guest_linear_address = vmcs_readl(GUEST_LINEAR_ADDRESS);
+		ve_info.guest_physical_address = fault->address;
+
+		ve_info_addr = vmcs12->virtual_exception_info_addr;
+
+		if (kvm_write_guest_page(vcpu->kvm, gpa_to_gfn(ve_info_addr), &ve_info,
+				offset_in_page(ve_info_addr), sizeof(ve_info))) {
+			BUG();
+		}
+
+		kvm_queue_exception(vcpu, VE_VECTOR);
+		return;
 	}
 
 	nested_vmx_vmexit(vcpu, vm_exit_reason, 0, exit_qualification);
@@ -2407,6 +2430,9 @@ static void prepare_vmcs02_early(struct vcpu_vmx *vmx, struct loaded_vmcs *vmcs0
 		if (exec_control & SECONDARY_EXEC_ENCLS_EXITING)
 			vmx_write_encls_bitmap(&vmx->vcpu, vmcs12);
 
+		/* EPT_VIOLATION_VE is emulated only */
+		exec_control &= ~SECONDARY_EXEC_EPT_VIOLATION_VE;
+	
 		secondary_exec_controls_set(vmx, exec_control);
 	}
 

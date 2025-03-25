@@ -133,6 +133,15 @@ static inline int FNAME(is_present_gpte)(unsigned long pte)
 #endif
 }
 
+static inline bool FNAME(is_ve_suppressed)(unsigned long pte)
+{
+#if PTTYPE != PTTYPE_EPT
+	return true;
+#else
+	return !!(pte & EPT_SPTE_SUPPRESS_VE);
+#endif
+}
+
 static bool FNAME(is_bad_mt_xwr)(struct rsvd_bits_validate *rsvd_check, u64 gpte)
 {
 #if PTTYPE != PTTYPE_EPT
@@ -320,6 +329,7 @@ static int FNAME(walk_addr_generic)(struct guest_walker *walker,
 	u16 errcode = 0;
 	gpa_t real_gpa;
 	gfn_t gfn;
+	bool non_present_gpte = false;
 
 	trace_kvm_mmu_pagetable_walk(addr, access);
 retry_walk:
@@ -421,8 +431,10 @@ retry_walk:
 		 */
 		pte_access = pt_access & (pte ^ walk_nx_mask);
 
-		if (unlikely(!FNAME(is_present_gpte)(pte)))
+		if (unlikely(!FNAME(is_present_gpte)(pte))) {
+			non_present_gpte = true;
 			goto error;
+		}
 
 		if (unlikely(FNAME(is_rsvd_bits_set)(mmu, pte, walker->level))) {
 			errcode = PFERR_RSVD_MASK | PFERR_PRESENT_MASK;
@@ -519,6 +531,19 @@ error:
 		 */
 		vcpu->arch.exit_qualification |= (pte_access & VMX_EPT_RWX_MASK) <<
 						 EPT_VIOLATION_RWX_SHIFT;
+
+		/* Intel SDM 3C 26.5.7.1 Convertiable EPT Violations
+		 * 1. Non-present EPT entry & bit 63 = 0
+		 * 2. Present, leaf entry, non-misconfigured & bit 63 = 0
+		 */
+		if (non_present_gpte &&
+			!FNAME(is_ve_suppressed)(pte)) {
+			walker->fault.vector = VE_VECTOR;
+		} else if (FNAME(is_last_gpte)(mmu, walker->level, pte) &&
+				   !FNAME(is_ve_suppressed)(pte)) {
+			// TODO: is this always lead to EPT violation?
+			walker->fault.vector = VE_VECTOR;
+		}
 	}
 #endif
 	walker->fault.address = addr;
