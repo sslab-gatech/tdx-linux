@@ -379,6 +379,8 @@ struct vcpu_vmx {
 	u64 msr_ia32_bios_done;
 
 	u64 xapic_disable;
+
+	DECLARE_HASHTABLE(flushed_vectors, 8);
 };
 
 struct kvm_vmx {

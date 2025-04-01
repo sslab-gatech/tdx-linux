@@ -7824,12 +7824,20 @@ static fastpath_t vmx_vcpu_run(struct kvm_vcpu *vcpu)
 static void vmx_vcpu_free(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	int bkt;
+	struct hlist_node *tmp;
+	struct flushed_vector *fv;
 
 	if (enable_pml)
 		vmx_destroy_pml_buffer(vmx);
 	free_vpid(vmx->vpid);
 	nested_vmx_free_vcpu(vcpu);
 	free_loaded_vmcs(vmx->loaded_vmcs);
+
+	hash_for_each_safe(vmx->flushed_vectors, bkt, tmp, fv, node) {
+		hash_del(&fv->node);
+		kfree(fv);
+	}
 }
 
 static int vmx_vcpu_create(struct kvm_vcpu *vcpu)

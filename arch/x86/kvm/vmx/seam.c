@@ -12,6 +12,7 @@
 #include "x86.h"
 #include <asm/asm.h>
 #include <asm/segment.h>
+#include <linux/hashtable.h>
 
 enum seamops_function {
     CAPABILITIES    = 0x0,
@@ -720,8 +721,25 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
      *   Don't know why such irq was not flushed until here...
      */
     int vec = kvm_apic_set_eoi(vcpu);
+    struct flushed_vector *fv, *found = NULL;
     while (vec != -1) {
-        printk(KERN_WARNING "[opentex]: flushed isr %d\n", vec);
+        hash_for_each_possible(vmx->flushed_vectors, fv, node, vec) {
+            if (fv->vec == vec) {
+                found = fv;
+                break;
+            }
+        }
+        if (!found) {
+            printk(KERN_WARNING "[opentex]: flushed isr %d\n", vec);
+
+            fv = kmalloc(sizeof(struct flushed_vector), GFP_KERNEL);
+            if (!fv) {
+                BUG();
+            }
+
+            fv->vec = vec;
+            hash_add(vmx->flushed_vectors, &fv->node, vec);
+        }
 
         vec = kvm_apic_set_eoi(vcpu);
     };
