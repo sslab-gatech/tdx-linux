@@ -437,7 +437,8 @@ static void nested_ept_inject_page_fault(struct kvm_vcpu *vcpu,
 					   fault->address);
 	}
 
-	if (fault->vector == VE_VECTOR) {
+	if (fault->vector == VE_VECTOR && 
+		(vmcs12->secondary_vm_exec_control & SECONDARY_EXEC_EPT_VIOLATION_VE)) {
 		KVM_BUG_ON(vmx->nested.pml_full, vcpu->kvm);
 
 		ve_info.exit_reason = vm_exit_reason;
