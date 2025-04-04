@@ -1614,23 +1614,6 @@ static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
 	return 0;
 }
 
-static int tdx_mem_page_accept(struct kvm *kvm, gfn_t gfn, enum pg_level level)
-{
-	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
-	int tdx_level = pg_level_to_tdx_sept_level(level);
-	gpa_t gpa = gfn_to_gpa(gfn);
-
-	u64 entry, level_state;
-	u64 err;
-
-	err = tdh_mem_page_accept(&kvm_tdx->td, gpa, tdx_level, &entry, &level_state);
-	if (KVM_BUG_ON(err, kvm)) {
-		return -EIO;
-	}
-
-	return 0;
-}
-
 /*
  * KVM_TDX_INIT_MEM_REGION calls kvm_gmem_populate() to get guest pages and
  * tdx_gmem_post_populate() to premap page table pages into private EPT.
@@ -1682,11 +1665,6 @@ int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
 		return tdx_mem_page_aug(kvm, gfn, level, pfn_to_page(pfn));
 
 	return tdx_mem_page_record_premap_cnt(kvm, gfn, level, pfn);
-}
-
-int tdx_sept_accept_private_page(struct kvm *kvm, gfn_t gfn, enum pg_level level)
-{
-	return tdx_mem_page_accept(kvm, gfn, level);
 }
 
 static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
@@ -1752,6 +1730,36 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		page += 1;
 	}
 	return r;
+}
+
+static int tdx_sept_demote_private_spte(struct kvm *kvm, gfn_t gfn,
+							enum pg_level level, void *private_spt)
+{
+	int tdx_level = pg_level_to_tdx_sept_level(level);
+	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
+	gpa_t gpa = gfn_to_gpa(gfn);
+	struct page *page = virt_to_page(private_spt);
+	u64 err, entry, level_state;
+
+	if (KVM_BUG_ON(!is_hkid_assigned(kvm_tdx), kvm))
+		return -EINVAL;
+
+try_again:
+	err = tdh_mem_page_demote(&kvm_tdx->td, gpa, tdx_level, page, &entry, 
+		&level_state);
+
+	if (err & TDX_INTERRUPTED_RESTARTABLE)
+		goto try_again;
+	
+	if (unlikely(err & TDX_OPERAND_BUSY))
+		return -EBUSY;
+
+	if (KVM_BUG_ON(err, kvm)) {
+		pr_tdx_error_2(TDH_MEM_PAGE_DEMOTE, err, entry, level_state);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 int tdx_sept_link_private_spt(struct kvm *kvm, gfn_t gfn,
@@ -1896,6 +1904,23 @@ int tdx_sept_remove_private_spte(struct kvm *kvm, gfn_t gfn,
 	tdx_track(kvm);
 
 	return tdx_sept_drop_private_spte(kvm, gfn, level, pfn_to_page(pfn));
+}
+
+int tdx_sept_split_private_spte(struct kvm *kvm, gfn_t gfn,
+						enum pg_level level, void *private_spt)
+{
+	int ret;
+
+	if (KVM_BUG_ON(!is_hkid_assigned(to_kvm_tdx(kvm)), kvm))
+		return -EINVAL;
+
+	ret = tdx_sept_zap_private_spte(kvm, gfn, level);
+	if (ret)
+		return ret;
+
+	tdx_track(kvm);
+
+	return tdx_sept_demote_private_spte(kvm, gfn, level, private_spt);
 }
 
 void tdx_deliver_interrupt(struct kvm_lapic *apic, int delivery_mode,

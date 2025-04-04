@@ -1800,9 +1800,6 @@ struct kvm_x86_ops {
 	/* Update the external page table from spte getting set. */
 	int (*set_external_spte)(struct kvm *kvm, gfn_t gfn, enum pg_level level,
 				 kvm_pfn_t pfn_for_gfn);
-	/* Accept the external page table from spte getting set. */
-	int (*accept_private_page)(struct kvm *kvm, gfn_t gfn, enum pg_level level);
-
 	/* Update external page tables for page table about to be freed. */
 	int (*free_external_spt)(struct kvm *kvm, gfn_t gfn, enum pg_level level,
 				 void *external_spt);
@@ -1810,6 +1807,10 @@ struct kvm_x86_ops {
 	/* Update external page table from spte getting removed, and flush TLB. */
 	int (*remove_external_spte)(struct kvm *kvm, gfn_t gfn, enum pg_level level,
 				    kvm_pfn_t pfn_for_gfn);
+
+	/* Split external page table entry. */
+	int (*split_external_spte)(struct kvm *kvm, gfn_t gfn, enum pg_level level,
+				   	void *external_spt);
 
 	bool (*has_wbinvd_exit)(void);
 

@@ -1503,6 +1503,7 @@ static int tdp_mmu_split_huge_page(struct kvm *kvm, struct tdp_iter *iter,
 {
 	const u64 huge_spte = iter->old_spte;
 	const int level = iter->level;
+	u64 new_spte, old_spte = iter->old_spte;
 	int ret = 0, i;
 
 	/*
@@ -1524,26 +1525,21 @@ static int tdp_mmu_split_huge_page(struct kvm *kvm, struct tdp_iter *iter,
 	if (is_mirror_sptep(iter->sptep)) {
 		KVM_BUG_ON(iter->level != PG_LEVEL_2M, kvm);
 
-		if (static_call(kvm_x86_remove_external_spte)(kvm, iter->gfn, PG_LEVEL_2M, spte_to_pfn(iter->old_spte))) {
-			printk(KERN_WARNING "[opentdx] failed to remove external spte\n");
-			BUG();
-		}
-		
-		if(tdp_mmu_link_sp(kvm, iter, sp, shared)) {
-			printk(KERN_WARNING "[opentdx] failed to link spte\n");
+		if (static_call(kvm_x86_split_external_spte)(kvm, iter->gfn, PG_LEVEL_2M, sp->external_spt)) {
+			printk(KERN_WARNING "[opentdx] failed to split external spte\n");
 			BUG();
 		}
 
-		for (i = 0; i < SPTE_ENT_PER_PAGE; i++) {
-			if (static_call(kvm_x86_set_external_spte)(kvm, iter->gfn + i, PG_LEVEL_4K, spte_to_pfn(sp->spt[i]))) {
-				printk(KERN_WARNING "[opentdx] failed to set external spte\n");
-				BUG();
-			}
-			if (static_call(kvm_x86_accept_private_page)(kvm, iter->gfn + i, PG_LEVEL_4K)) {
-				printk(KERN_WARNING "[opentdx] failed to accept external spte\n");
-				BUG();
-			}
+		if (!try_cmpxchg64(rcu_dereference(iter->sptep), &old_spte, FROZEN_SPTE)) {
+			printk(KERN_WARNING "[opentdx] failed to lock out sptep for split\n");
+			BUG();
 		}
+
+		new_spte = make_nonleaf_spte(sp->spt, !kvm_ad_enabled);
+		__kvm_tdp_mmu_write_spte(iter->sptep, new_spte);
+
+		handle_changed_spte(kvm, iter->as_id, iter->gfn, iter->old_spte, new_spte, iter->level, shared);
+
 	} else {
 		ret = tdp_mmu_link_sp(kvm, iter, sp, shared);
 		if (ret)

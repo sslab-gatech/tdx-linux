@@ -1553,24 +1553,6 @@ u64 tdh_mem_page_add(struct tdx_td *td, u64 gpa, struct page *page, struct page 
 }
 EXPORT_SYMBOL_GPL(tdh_mem_page_add);
 
-u64 tdh_mem_page_accept(struct tdx_td *td, u64 gpa, int tdx_level, u64 *ext_err1, u64 *ext_err2)
-{
-	/* TDH.MEM.PAGE.ADD() supports only 4K page. tdx 4K page level = 0 */
-	struct tdx_module_args args = {
-		.rcx = gpa | tdx_level,
-		.rdx = tdx_tdr_pa(td),
-	};
-	u64 ret;
-
-	ret = seamcall_ret(TDH_MEM_PAGE_ACCEPT, &args);
-
-	*ext_err1 = args.rcx;
-	*ext_err2 = args.rdx;
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(tdh_mem_page_accept);
-
 u64 tdh_mem_sept_add(struct tdx_td *td, u64 gpa, int level, struct page *page, u64 *ext_err1, u64 *ext_err2)
 {
 	struct tdx_module_args args = {
@@ -1883,6 +1865,25 @@ u64 tdh_mem_page_remove(struct tdx_td *td, u64 gpa, u64 level, u64 *ext_err1, u6
 	return ret;
 }
 EXPORT_SYMBOL_GPL(tdh_mem_page_remove);
+
+u64 tdh_mem_page_demote(struct tdx_td *td, u64 gpa, u64 level, struct page *page, u64 *ext_err1, u64 *ext_err2)
+{
+	struct tdx_module_args args = {
+		.rcx = gpa | level,
+		.rdx = tdx_tdr_pa(td),
+		.r8 = page_to_phys(page),
+	};
+	u64 ret;
+
+	tdx_clflush_page(page, PG_LEVEL_4K);
+	ret = seamcall_ret(TDH_MEM_PAGE_DEMOTE, &args);
+
+	*ext_err1 = args.rcx;
+	*ext_err2 = args.rdx;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(tdh_mem_page_demote);
 
 u64 tdh_phymem_cache_wb(bool resume)
 {

@@ -56,9 +56,9 @@ static __init int vt_hardware_setup(void)
 		 */
 		vt_x86_ops.link_external_spt = tdx_sept_link_private_spt;
 		vt_x86_ops.set_external_spte = tdx_sept_set_private_spte;
-		vt_x86_ops.accept_private_page = tdx_sept_accept_private_page;
 		vt_x86_ops.free_external_spt = tdx_sept_free_private_spt;
 		vt_x86_ops.remove_external_spte = tdx_sept_remove_private_spte;
+		vt_x86_ops.split_external_spte = tdx_sept_split_private_spte;
 	} else {
 		vt_x86_ops.protected_apic_has_interrupt = NULL;
 	}
