@@ -237,32 +237,46 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 
     /* 27.3.1 Checks on the guest state area */
     if ((cr0 & vmcs_config.nested.cr0_fixed0) != vmcs_config.nested.cr0_fixed0 ||
-        (cr0 | vmcs_config.nested.cr0_fixed1) != vmcs_config.nested.cr0_fixed1)
+        (cr0 | vmcs_config.nested.cr0_fixed1) != vmcs_config.nested.cr0_fixed1) {
+        printk(KERN_WARNING "[opentdx] invalid guest cr0 (fixed)\n");
         return 1;
-
-    if ((cr0 & X86_CR0_PG) && !(cr0 & X86_CR0_PE))
-        return 1;
-
-    if ((cr4 & vmcs_config.nested.cr4_fixed0) != vmcs_config.nested.cr4_fixed0 ||
-        (cr4 | vmcs_config.nested.cr4_fixed1) != vmcs_config.nested.cr4_fixed1)
-        return 1;
-
-    if ((cr4 & X86_CR4_CET) && !(cr0 & X86_CR0_WP))
-        return 1;
-
-    if (entry_ctls & VM_ENTRY_IA32E_MODE) {
-        if (!(cr0 & X86_CR0_PG) || !(cr4 & X86_CR4_PAE) || (cr4 & X86_CR4_PCIDE))
-            return 1;
     }
 
-    if (cr3 & vcpu->arch.reserved_gpa_bits)
+    if ((cr0 & X86_CR0_PG) && !(cr0 & X86_CR0_PE)) {
+        printk(KERN_WARNING "[opentdx] invalid guest cr0\n");
         return 1;
+    }
+
+    if ((cr4 & vmcs_config.nested.cr4_fixed0) != vmcs_config.nested.cr4_fixed0 ||
+        (cr4 | vmcs_config.nested.cr4_fixed1) != vmcs_config.nested.cr4_fixed1) {
+        printk(KERN_WARNING "[opentdx] invalid guest cr4 (fixed)\n");
+        return 1;
+    }
+
+    if ((cr4 & X86_CR4_CET) && !(cr0 & X86_CR0_WP)) {
+        printk(KERN_WARNING "[opentdx] invalid guest cr4\n");
+        return 1;
+    }
+
+    if (entry_ctls & VM_ENTRY_IA32E_MODE) {
+        if (!(cr0 & X86_CR0_PG) || !(cr4 & X86_CR4_PAE) || (cr4 & X86_CR4_PCIDE)) {
+            printk(KERN_WARNING "[opentdx] invalid guest cr3, cr4 when entering IA32E\n");
+            return 1;
+        }
+    }
+
+    if (cr3 & vcpu->arch.reserved_gpa_bits) {
+        printk(KERN_WARNING "[opentdx] invalid guest cr3\n");
+        return 1;
+    }
 
     if (has_cet && (
         entry_ctls & VM_ENTRY_LOAD_CET_STATE) && (
         is_noncanonical_address(s_cet, vcpu) ||
-        is_noncanonical_address(intr_ssp_table_addr, vcpu)))
+        is_noncanonical_address(intr_ssp_table_addr, vcpu))) {
+        printk(KERN_WARNING "[opentdx] invalid cet fields\n");
         return 1;
+    }
 
 // TODO: check IA32_PERF_GLOBAL_CTRL
 // TODO: check IA32_PAT
@@ -274,8 +288,10 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
         //     return 1;
 
         if ((cr0 & X86_CR0_PG) &&
-            (!!(efer & EFER_LMA) != !!(efer & EFER_LME)))
+            (!!(efer & EFER_LMA) != !!(efer & EFER_LME))) {
+            printk(KERN_WARNING "[opentdx] invalid efer\n");
             return 1;
+        }
     }
 // TODO: IA32_BNDCFGS
 // TODO: IA32_RTIT_CTL
@@ -283,8 +299,10 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
     if (has_cet && 
         (entry_ctls & VM_ENTRY_LOAD_CET_STATE) &&
         ((s_cet & CET_RESERVED) ||
-         ((s_cet & CET_SUPPRESS) && (s_cet & CET_WAIT_ENDBR))))
+         ((s_cet & CET_SUPPRESS) && (s_cet & CET_WAIT_ENDBR)))) {
+        printk(KERN_WARNING "[opentdx] invalid cet\n");
         return 1;
+    }
 
 // TODO: PKRS
 // TODO: UINV
@@ -317,12 +335,12 @@ static int load_guest_state(struct kvm_vcpu *vcpu, u8 *vmcs)
 // TODO: 27.3.1.4 Checks on Guest RIP, RFLAGS, and SSP
 
     /* 27.3.2 Loading Guest State */
-    if (kvm_set_cr0(vcpu, cr0)) {
-        printk(KERN_WARNING "[opentdx] failed to set cr0 to %lx in seamret\n", cr0);
-        return 1;
-    }
     if (kvm_set_cr4(vcpu, cr4)) {
         printk(KERN_WARNING "[opentdx] failed to set cr4 to %lx in seamret\n", cr4);
+        return 1;
+    }
+    if (kvm_set_cr0(vcpu, cr0)) {
+        printk(KERN_WARNING "[opentdx] failed to set cr0 to %lx in seamret\n", cr0);
         return 1;
     }
     if (kvm_set_cr3(vcpu, cr3)) {

@@ -338,6 +338,8 @@ int handle_getsec(struct kvm_vcpu *vcpu)
     switch (eax) {
     case CAPABILITIES:
         err = handle_getsec_capabilities(vcpu);
+        if (!err)
+            kvm_rip_write(vcpu, kvm_rip_read(vcpu) + 0x2);
         break;
     case ENTERACCS:
         if (!kvm_vmx->seamrr.enabled)
