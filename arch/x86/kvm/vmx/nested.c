@@ -6395,7 +6395,7 @@ static bool nested_vmx_l1_wants_exit(struct kvm_vcpu *vcpu,
 			return true;
 		else if (is_page_fault(intr_info))
 			return true;
-		else if (is_from_tdcall(vcpu, intr_info))
+		else if (open_tdx && is_from_tdcall(vcpu, intr_info))
 			return false;
 		return vmcs12->exception_bitmap &
 				(1u << (intr_info & INTR_INFO_VECTOR_MASK));

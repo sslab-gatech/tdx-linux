@@ -335,7 +335,8 @@ static int FNAME(walk_addr_generic)(struct guest_walker *walker,
 retry_walk:
 	walker->level = mmu->cpu_role.base.level;
 #if PTTYPE == PTTYPE_EPT
-	pte			  = !!(addr & (1ULL << (vcpu->arch.maxphyaddr - 1))) ?
+	// Need to also check if L2 VM is in seam mode or not
+	pte			  = (open_tdx && !!(addr & (1ULL << (vcpu->arch.maxphyaddr - 1)))) ?
 					  mmu->get_guest_pgd_shared(vcpu) : mmu->get_guest_pgd(vcpu);
 #else
 	pte 		  = kvm_mmu_get_guest_pgd(vcpu, mmu);
@@ -536,13 +537,15 @@ error:
 		 * 1. Non-present EPT entry & bit 63 = 0
 		 * 2. Present, leaf entry, non-misconfigured & bit 63 = 0
 		 */
-		if (non_present_gpte &&
-			!FNAME(is_ve_suppressed)(pte)) {
-			walker->fault.vector = VE_VECTOR;
-		} else if (FNAME(is_last_gpte)(mmu, walker->level, pte) &&
-				   !FNAME(is_ve_suppressed)(pte)) {
-			// TODO: is this always lead to EPT violation?
-			walker->fault.vector = VE_VECTOR;
+		if (open_tdx) {
+			if (non_present_gpte &&
+				!FNAME(is_ve_suppressed)(pte)) {
+				walker->fault.vector = VE_VECTOR;
+			} else if (FNAME(is_last_gpte)(mmu, walker->level, pte) &&
+					   !FNAME(is_ve_suppressed)(pte)) {
+				// TODO: is this always lead to EPT violation?
+				walker->fault.vector = VE_VECTOR;
+			}
 		}
 	}
 #endif

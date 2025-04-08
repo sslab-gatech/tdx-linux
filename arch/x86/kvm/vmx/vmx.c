@@ -2151,9 +2151,13 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = vmcs_read64(GUEST_IA32_DEBUGCTL);
 		break;
 	case MSR_IA32_BIOS_DONE:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = vmx->msr_ia32_bios_done;
 		break;
 	case MSR_IA32_BIOS_SE_SVN:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = vmx->msr_ia32_bios_se_svn;
 		break;
 	case MSR_MTRRcap:
@@ -2162,13 +2166,19 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 				kvm_get_msr_common(vcpu, msr_info));
 		break;
 	case MSR_IA32_SGX_DEBUG_MODE:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = 0x2; // Always SGX debug mode
 		break;
 	case MSR_IA32_SEAMRR_PHYS_BASE:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = ((kvm_vmx->seamrr.base & SEAMRR_BASE_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
 						  (kvm_vmx->seamrr.configured << SEAMRR_BASE_CONFIGURE_OFFSET));
 		break;
 	case MSR_IA32_SEAMRR_PHYS_MASK:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = ((kvm_vmx->seamrr.size & SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu))) |
 						  (kvm_vmx->seamrr.locked << SEAMRR_MASK_LOCK_OFFSET) |
 						  (kvm_vmx->seamrr.enabled << SEAMRR_MASK_ENABLE_OFFSET));
@@ -2176,13 +2186,19 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_SEAMEXTEND:
 		return 1;
 	case MSR_IA32_MKTME_KEYID_PARTITIONING:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = (num_tdx_keyids(kvm_vmx->msr_ia32_tme_activate) << 32) |
 			num_keyids(kvm_vmx->msr_ia32_tme_activate);
 		break;
 	case MSR_IA32_TME_CAPABILITY:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = kvm_vmx->msr_ia32_tme_capability;
 		break;
 	case MSR_IA32_TME_ACTIVATE:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = kvm_vmx->msr_ia32_tme_activate;
 		break;
 	case MSR_IA32_XAPIC_DISABLE_STATUS:
@@ -2243,6 +2259,8 @@ static int vmx_get_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = 0;
 		break;
 	case MSR_IA32_UARCH_MISC_CTRL:
+		if (!open_tdx)
+			return 1;
 		msr_info->data = 0;
 		break;
 	default:
@@ -2590,17 +2608,19 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		ret = kvm_set_msr_common(vcpu, msr_info);
 		break;
 	case MSR_IA32_BIOS_DONE:
+		if (!open_tdx)
+			return 1;
 		vmx->msr_ia32_bios_done = data & 1;
 		break;
 	case MSR_IA32_BIOS_SE_SVN:
-		if (data & 0xFF)
+		if (!open_tdx || data & 0xFF)
 			return 1;
 		vmx->msr_ia32_bios_se_svn = data;
 		break;
 	case MSR_IA32_SGX_DEBUG_MODE:
 		return 1;
 	case MSR_IA32_SEAMRR_PHYS_BASE:
-		if (kvm_vmx->seamrr.locked)
+		if (!open_tdx || kvm_vmx->seamrr.locked)
 			return 1;
 		if (data & ~(SEAMRR_BASE_BITS_MASK(cpuid_maxphyaddr(vcpu)) | SEAMRR_BASE_CONFIGURED))
 			return 1;
@@ -2608,7 +2628,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		kvm_vmx->seamrr.configured = (data & SEAMRR_BASE_CONFIGURED) >> SEAMRR_BASE_CONFIGURE_OFFSET;
 		break;
 	case MSR_IA32_SEAMRR_PHYS_MASK:
-		if (kvm_vmx->seamrr.locked)
+		if (!open_tdx || kvm_vmx->seamrr.locked)
 			return 1;
 		if (data & ~(SEAMRR_MASK_BITS_MASK(cpuid_maxphyaddr(vcpu)) | SEAMRR_MASK_LOCKED | SEAMRR_MASK_ENABLED))
 			return 1;
@@ -2620,6 +2640,8 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			mcheck(vcpu, kvm_vmx->seamrr.base + kvm_vmx->seamrr.size - PAGE_SIZE);
 		break;
 	case MSR_IA32_SEAMEXTEND:
+		if (!open_tdx)
+			return 1;
 		handle_seamextend(vcpu);
 		break;
 	case MSR_IA32_MKTME_KEYID_PARTITIONING:
@@ -2627,7 +2649,7 @@ static int vmx_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	case MSR_IA32_TME_CAPABILITY:
 		return 1;
 	case MSR_IA32_TME_ACTIVATE:
-		if (tme_locked(kvm_vmx->msr_ia32_tme_activate))
+		if (!open_tdx || tme_locked(kvm_vmx->msr_ia32_tme_activate))
 			return 1;
 		else if ((data & TME_ACT_RESERVED1) || (data & TME_ACT_RESERVED2))
 			return 1;
@@ -6126,7 +6148,7 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 	if (unlikely(allow_smaller_maxphyaddr && !kvm_vcpu_is_legal_gpa(vcpu, gpa)))
 		return kvm_emulate_instruction(vcpu, 0);
 
-	if (is_guest)
+	if (!open_tdx || is_guest)
 		goto handle_page_fault;
 
 	keyid = keyid_of(gpa, vcpu->kvm);
@@ -7985,26 +8007,28 @@ static int vmx_vm_init(struct kvm *kvm)
 		}
 	}
 
-	kvm_vmx->seamrr.base = 0;
-	kvm_vmx->seamrr.size = 0;
-	kvm_vmx->seamrr.configured = 0;
-	kvm_vmx->seamrr.locked = 0;
-	kvm_vmx->seamrr.enabled = 1;
+	if (open_tdx) {
+		kvm_vmx->seamrr.base = 0;
+		kvm_vmx->seamrr.size = 0;
+		kvm_vmx->seamrr.configured = 0;
+		kvm_vmx->seamrr.locked = 0;
+		kvm_vmx->seamrr.enabled = 1;
 
-	kvm_vmx->seam_extend.valid = 1;
-	kvm_vmx->seam_extend.seam_ready = 0;
-	kvm_vmx->seam_extend.p_seamldr_ready = 0;
+		kvm_vmx->seam_extend.valid = 1;
+		kvm_vmx->seam_extend.seam_ready = 0;
+		kvm_vmx->seam_extend.p_seamldr_ready = 0;
 
-	mutex_init(&kvm_vmx->p_seamldr_lock);
-	kvm_vmx->msr_ia32_tme_capability = (
-		(TME_CAP_AES_128 | TME_CAP_AES_128_INT | TME_CAP_AES_256) |
-		TME_CAP_BYPASS_SUPPORTED | TME_CAP_KEYID_BITS | TME_CAP_KEYID_NUM);
-	kvm_vmx->msr_ia32_tme_activate = 0;
+		mutex_init(&kvm_vmx->p_seamldr_lock);
+		kvm_vmx->msr_ia32_tme_capability = (
+			(TME_CAP_AES_128 | TME_CAP_AES_128_INT | TME_CAP_AES_256) |
+			TME_CAP_BYPASS_SUPPORTED | TME_CAP_KEYID_BITS | TME_CAP_KEYID_NUM);
+		kvm_vmx->msr_ia32_tme_activate = 0;
 
-	kvm_vmx->mktme_table = (mktme_entry_t *) kzalloc(sizeof(mktme_entry_t) * (1 << KEYID_BITS),
-												GFP_KERNEL);
-	xa_init(&kvm_vmx->keyid_of_pages);
-	atomic_set(&kvm_vmx->num_keyed_pages, 0);
+		kvm_vmx->mktme_table = (mktme_entry_t *) kzalloc(sizeof(mktme_entry_t) * (1 << KEYID_BITS),
+													GFP_KERNEL);
+		xa_init(&kvm_vmx->keyid_of_pages);
+		atomic_set(&kvm_vmx->num_keyed_pages, 0);
+	}
 
 	return 0;
 }
@@ -8710,19 +8734,21 @@ static void vmx_vm_destroy(struct kvm *kvm)
 	sptep_of_page_t *sptep_of_page, *tmp;
 	unsigned long idx;
 
-	kfree(kvm_vmx->mktme_table);
+	if (open_tdx) {
+		kfree(kvm_vmx->mktme_table);
 
-	xa_for_each(&kvm_vmx->keyid_of_pages, idx, keyid_of_page) {
+		xa_for_each(&kvm_vmx->keyid_of_pages, idx, keyid_of_page) {
 
-		list_for_each_entry_safe(sptep_of_page, tmp, &keyid_of_page->page_list, node) {
-			list_del(&sptep_of_page->node);
-			kfree(sptep_of_page);
+			list_for_each_entry_safe(sptep_of_page, tmp, &keyid_of_page->page_list, node) {
+				list_del(&sptep_of_page->node);
+				kfree(sptep_of_page);
+			}
+
+			kfree(keyid_of_page);
 		}
-
-		kfree(keyid_of_page);
+		atomic_set(&kvm_vmx->num_keyed_pages, 0);
+		xa_destroy(&kvm_vmx->keyid_of_pages);
 	}
-	atomic_set(&kvm_vmx->num_keyed_pages, 0);
-	xa_destroy(&kvm_vmx->keyid_of_pages);
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
 
