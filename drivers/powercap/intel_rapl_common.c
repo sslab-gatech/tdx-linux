@@ -745,6 +745,10 @@ static struct rapl_primitive_info *get_rpi(struct rapl_package *rp, int prim)
 
 static int rapl_config(struct rapl_package *rp)
 {
+        /* defaults_msr can be NULL on unsupported platforms */
+	if (!rp->priv->defaults || !rp->priv->rpi)
+		return -ENODEV;
+
 	switch (rp->priv->type) {
 	/* MMIO I/F shares the same register layout as MSR registers */
 	case RAPL_IF_MMIO:
@@ -759,6 +763,11 @@ static int rapl_config(struct rapl_package *rp)
 	default:
 		return -EINVAL;
 	}
+
+        /* defaults_msr can be NULL on unsupported platforms */
+	if (!rp->priv->defaults || !rp->priv->rpi)
+	        return -ENODEV;
+
 	return 0;
 }
 
