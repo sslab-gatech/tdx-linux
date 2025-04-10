@@ -959,6 +959,9 @@ static void tdx_vcpu_enter_exit(struct kvm_vcpu *vcpu)
 	REG(rsi, RSI);
 #undef REG
 
+	vcpu->arch.regs[VCPU_REGS_RIP] = args.rcx >> 32;
+	vcpu->arch.regs[VCPU_REGS_RCX] &= 0xffffffff;
+
 	if (tdx_check_exit_reason(vcpu, EXIT_REASON_EXCEPTION_NMI) &&
 	    is_nmi(tdexit_intr_info(vcpu)))
 		__vmx_handle_nmi(vcpu);
