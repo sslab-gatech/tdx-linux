@@ -1540,6 +1540,7 @@ static int tdp_mmu_split_huge_page(struct kvm *kvm, struct tdp_iter *iter,
 
 		handle_changed_spte(kvm, iter->as_id, iter->gfn, iter->old_spte, new_spte, iter->level, shared);
 
+		tdp_account_mmu_page(kvm, sp);
 	} else {
 		ret = tdp_mmu_link_sp(kvm, iter, sp, shared);
 		if (ret)
