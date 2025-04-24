@@ -662,6 +662,8 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     struct kvm_segment cs = {0,};
     int err = 0;
 
+    u16 svi;
+
     struct page *vmcs_page = alloc_page(GFP_KERNEL);
     // TODO: handle if alloc_page failed
 
@@ -734,36 +736,14 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     save_guest_state(vcpu, (u8 *) vmcs);
     load_host_state(vcpu, (u8 *) vmcs);
 
-    /* Flush irqs that are served when SEAMCALL
-     *   Such irqs cause irq blocking later as SVI is set but not flushed
-     *   Don't know why such irq was not flushed until here...
-     */
-    int vec = kvm_apic_set_eoi(vcpu);
-    struct flushed_vector *fv, *found = NULL;
-    while (vec != -1) {
-        hash_for_each_possible(vmx->flushed_vectors, fv, node, vec) {
-            if (fv->vec == vec) {
-                found = fv;
-                break;
-            }
-        }
-        if (!found) {
-            printk(KERN_WARNING "[opentex]: flushed isr %d\n", vec);
-
-            fv = kmalloc(sizeof(struct flushed_vector), GFP_KERNEL);
-            if (!fv) {
-                BUG();
-            }
-
-            fv->vec = vec;
-            hash_add(vmx->flushed_vectors, &fv->node, vec);
-        }
-
-        vec = kvm_apic_set_eoi(vcpu);
-    };
-
     down_read(&vcpu->kvm->arch.apicv_update_lock);
     preempt_disable();
+
+    svi = vmcs_read16(GUEST_INTR_STATUS) >> 8;
+    if (svi) {
+        printk(KERN_WARNING "[opentdx] intr not resolved before seamcall (SVI=%d)\n", svi);
+        BUG(); // TODO: don't know whether OpenTDX should handle it
+    }
 
     vcpu->arch.apic->apicv_active = false;
     kvm_apic_update_apicv(vcpu);
@@ -841,6 +821,8 @@ int handle_seamret(struct kvm_vcpu *vcpu)
 
     vcpu->arch.apic->apicv_active = true;
     kvm_apic_update_apicv(vcpu);
+    vmx_hwapic_irr_update(vcpu, kvm_lapic_find_highest_irr(vcpu));
+    vmx_hwapic_isr_update(kvm_lapic_find_highest_isr(vcpu));
     vmx_refresh_apicv_exec_ctrl(vcpu);
 
     preempt_enable();

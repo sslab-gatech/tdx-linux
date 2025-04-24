@@ -7210,7 +7210,7 @@ out:
 	kvm_release_pfn_clean(pfn);
 }
 
-static void vmx_hwapic_isr_update(int max_isr)
+void vmx_hwapic_isr_update(int max_isr)
 {
 	u16 status;
 	u8 old;
@@ -7226,6 +7226,7 @@ static void vmx_hwapic_isr_update(int max_isr)
 		vmcs_write16(GUEST_INTR_STATUS, status);
 	}
 }
+EXPORT_SYMBOL_GPL(vmx_hwapic_isr_update);
 
 static void vmx_set_rvi(int vector)
 {
@@ -7244,7 +7245,7 @@ static void vmx_set_rvi(int vector)
 	}
 }
 
-static void vmx_hwapic_irr_update(struct kvm_vcpu *vcpu, int max_irr)
+void vmx_hwapic_irr_update(struct kvm_vcpu *vcpu, int max_irr)
 {
 	/*
 	 * When running L2, updating RVI is only relevant when
@@ -7257,6 +7258,7 @@ static void vmx_hwapic_irr_update(struct kvm_vcpu *vcpu, int max_irr)
 	if (!is_guest_mode(vcpu))
 		vmx_set_rvi(max_irr);
 }
+EXPORT_SYMBOL_GPL(vmx_hwapic_irr_update);
 
 static int vmx_sync_pir_to_irr(struct kvm_vcpu *vcpu)
 {
@@ -7846,20 +7848,12 @@ static fastpath_t vmx_vcpu_run(struct kvm_vcpu *vcpu)
 static void vmx_vcpu_free(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
-	int bkt;
-	struct hlist_node *tmp;
-	struct flushed_vector *fv;
 
 	if (enable_pml)
 		vmx_destroy_pml_buffer(vmx);
 	free_vpid(vmx->vpid);
 	nested_vmx_free_vcpu(vcpu);
 	free_loaded_vmcs(vmx->loaded_vmcs);
-
-	hash_for_each_safe(vmx->flushed_vectors, bkt, tmp, fv, node) {
-		hash_del(&fv->node);
-		kfree(fv);
-	}
 }
 
 static int vmx_vcpu_create(struct kvm_vcpu *vcpu)

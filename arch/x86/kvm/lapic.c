@@ -813,6 +813,12 @@ int kvm_lapic_find_highest_irr(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_find_highest_irr);
 
+int kvm_lapic_find_highest_isr(struct kvm_vcpu *vcpu)
+{
+	return apic_find_highest_isr(vcpu->arch.apic);
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_find_highest_isr);
+
 static int __apic_accept_irq(struct kvm_lapic *apic, int delivery_mode,
 			     int vector, int level, int trig_mode,
 			     struct dest_map *dest_map);

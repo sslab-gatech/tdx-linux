@@ -131,11 +131,6 @@ read_segment_helper(TR)
 #define CAPABILITIES_SEAMDB_GETREF  BIT(4)
 #define CAPABILITIES_SEAMDB_REPORT  BIT(5)
 
-struct flushed_vector {
-    int vec;
-    struct hlist_node node;
-};
-
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
 void handle_seamextend(struct kvm_vcpu *vcpu);
 

@@ -379,8 +379,6 @@ struct vcpu_vmx {
 	u64 msr_ia32_bios_done;
 
 	u64 xapic_disable;
-
-	DECLARE_HASHTABLE(flushed_vectors, 8);
 };
 
 struct kvm_vmx {
@@ -452,6 +450,9 @@ void vmx_set_idt(struct kvm_vcpu *vcpu, struct desc_ptr *dt);
 void vmx_get_idt(struct kvm_vcpu *vcpu, struct desc_ptr *dt);
 void vmx_set_gdt(struct kvm_vcpu *vcpu, struct desc_ptr *dt);
 void vmx_get_gdt(struct kvm_vcpu *vcpu, struct desc_ptr *dt);
+
+void vmx_hwapic_irr_update(struct kvm_vcpu *vcpu, int max_irr);
+void vmx_hwapic_isr_update(int max_isr);
 
 
 void vmx_disable_intercept_for_msr(struct kvm_vcpu *vcpu, u32 msr, int type);
