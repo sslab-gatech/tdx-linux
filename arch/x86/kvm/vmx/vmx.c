@@ -6167,11 +6167,13 @@ static int handle_ept_violation(struct kvm_vcpu *vcpu)
 			// TODO: abort
 			BUG();
 		} else if ((error_code & (PFERR_USER_MASK | PFERR_FETCH_MASK))) {
-			if (!keyid_of_page || keyid_of_page->keyid == KEYID_EMPTY) {
-				printk(KERN_WARNING "[opentdx] mktme violation: read access to 0x%llx (keyid: %d) whose TD_OWNER_BIT is cleared", gpa, keyid);
+			if (!keyid_of_page) {
+				printk(KERN_WARNING "[opentdx] mktme error: read access to 0x%llx (keyid: %d) without keyid_of_page", gpa, keyid);
 
-				// TODO: abort
 				BUG();
+			} else if (keyid_of_page->keyid != keyid) {
+				printk(KERN_WARNING "[opentdx] mktme violation: read access to 0x%llx (keyid: %d) whose actual keyid is %d",
+						gpa, keyid, keyid_of_page->keyid);
 			}
 		}
 	} else if (keyid > 0) {
@@ -8941,6 +8943,21 @@ found:
 	return;
 }
 
+static void vmx_clear_keyid_of_pages(struct kvm *kvm)
+{
+	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
+	keyid_of_page_t *keyid_of_page;
+	sptep_of_page_t *sptep_of_page, *tmp;
+	unsigned long idx;
+
+	xa_for_each(&kvm_vmx->keyid_of_pages, idx, keyid_of_page) {
+		list_for_each_entry_safe(sptep_of_page, tmp, &keyid_of_page->page_list, node) {
+			list_del(&sptep_of_page->node);
+			kfree(sptep_of_page);
+		}
+	}
+}
+
 static struct kvm_x86_ops vmx_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -9346,6 +9363,7 @@ static __init int hardware_setup(void)
 		vmx_x86_ops.get_gpa_without_keyid = gpa_without_keyid;
 		vmx_x86_ops.get_gpa_with_keyid = gpa_with_keyid;
 		vmx_x86_ops.update_keyid_of_pages = vmx_update_keyid_of_pages;
+		vmx_x86_ops.clear_keyid_of_pages = vmx_clear_keyid_of_pages;
 
 		vmx_x86_ops.get_seam_state = get_seam_state;
 		vmx_x86_ops.get_mktme_state = get_mktme_state;

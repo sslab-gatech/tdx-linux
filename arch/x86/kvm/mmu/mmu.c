@@ -6299,6 +6299,9 @@ static void kvm_mmu_zap_all_fast(struct kvm *kvm)
 	 */
 	if (tdp_mmu_enabled)
 		kvm_tdp_mmu_zap_invalidated_roots(kvm);
+
+	if (kvm_x86_ops.clear_keyid_of_pages)
+		kvm_x86_ops.clear_keyid_of_pages(kvm);
 }
 
 static bool kvm_has_zapped_obsolete_pages(struct kvm *kvm)

@@ -143,6 +143,7 @@ KVM_X86_OP_OPTIONAL(get_keyid_of)
 KVM_X86_OP_OPTIONAL(get_gpa_without_keyid)
 KVM_X86_OP_OPTIONAL(get_gpa_with_keyid)
 KVM_X86_OP_OPTIONAL(update_keyid_of_pages)
+KVM_X86_OP_OPTIONAL(clear_keyid_of_pages)
 
 #undef KVM_X86_OP
 #undef KVM_X86_OP_OPTIONAL
