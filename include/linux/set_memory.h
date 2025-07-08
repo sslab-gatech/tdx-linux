@@ -66,6 +66,21 @@ static inline int set_memory_decrypted(unsigned long addr, int numpages)
 {
 	return 0;
 }
+
+static inline int is_vm_encrypted(struct mm_struct *mm, unsigned long start, unsigned long end)
+{
+	return 0;
+}
+
+static inline int set_vm_encrypted(struct mm_struct *mm, unsigned long start, unsigned long end)
+{
+	return 0;
+}
+
+static inline int set_vm_decrypted(struct mm_struct *mm, unsigned long start, unsigned long end)
+{
+	return 1;
+}
 #endif /* CONFIG_ARCH_HAS_MEM_ENCRYPT */
 
 #endif /* _LINUX_SET_MEMORY_H_ */

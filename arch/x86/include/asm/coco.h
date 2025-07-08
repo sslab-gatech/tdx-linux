@@ -17,6 +17,7 @@ void cc_set_mask(u64 mask);
 #ifdef CONFIG_ARCH_HAS_CC_PLATFORM
 u64 cc_mkenc(u64 val);
 u64 cc_mkdec(u64 val);
+u8 cc_isenc(u64 val);
 #else
 static inline u64 cc_mkenc(u64 val)
 {
