@@ -16,6 +16,7 @@ extern enum cc_vendor cc_vendor;
 void cc_set_mask(u64 mask);
 u64 cc_mkenc(u64 val);
 u64 cc_mkdec(u64 val);
+u8 cc_isenc(u64 val);
 #else
 static inline u64 cc_mkenc(u64 val)
 {
@@ -25,6 +26,11 @@ static inline u64 cc_mkenc(u64 val)
 static inline u64 cc_mkdec(u64 val)
 {
 	return val;
+}
+
+static inline u8 cc_isenc(u64 val)
+{
+	return false;
 }
 #endif
 

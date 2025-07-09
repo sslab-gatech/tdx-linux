@@ -58,6 +58,10 @@ int set_pages_array_uc(struct page **pages, int addrinarray);
 int set_pages_array_wc(struct page **pages, int addrinarray);
 int set_pages_array_wb(struct page **pages, int addrinarray);
 
+int is_vm_encrypted(struct mm_struct *mm, unsigned long start, unsigned long end);
+int set_vm_encrypted(struct mm_struct *mm, unsigned long start, unsigned long end);
+int set_vm_decrypted(struct mm_struct *mm, unsigned long start, unsigned long end);
+
 /*
  * For legacy compatibility with the old APIs, a few functions
  * are provided that work on a "struct page".

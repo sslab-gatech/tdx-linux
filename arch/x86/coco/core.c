@@ -149,6 +149,19 @@ u64 cc_mkdec(u64 val)
 }
 EXPORT_SYMBOL_GPL(cc_mkdec);
 
+u8 cc_isenc(u64 val)
+{
+	switch (cc_vendor) {
+	case CC_VENDOR_AMD:
+		return !!(val & cc_mask);
+	case CC_VENDOR_INTEL:
+		return !(val & cc_mask);
+	default:
+		return false;
+	}
+}
+EXPORT_SYMBOL_GPL(cc_isenc);
+
 __init void cc_set_mask(u64 mask)
 {
 	cc_mask = mask;

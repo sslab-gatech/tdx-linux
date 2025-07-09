@@ -2195,6 +2195,113 @@ int set_memory_decrypted(unsigned long addr, int numpages)
 }
 EXPORT_SYMBOL_GPL(set_memory_decrypted);
 
+int is_vm_encrypted(struct mm_struct *mm, unsigned long start, unsigned long end)
+{
+	unsigned long base = start, incr;
+	unsigned int level;
+	int enc = 1;
+	pte_t *pte;
+
+	if (end <= start) return -1;
+
+	while (base < end) {
+		pte = lookup_address_in_pgd(pgd_offset(mm, base), base, &level);
+		if (pte == NULL || level == PG_LEVEL_NONE) return -1;
+
+		enc &= cc_isenc(pte_val(*pte));
+
+		incr = (level == PG_LEVEL_4K) ? PAGE_SIZE :
+			   (level == PG_LEVEL_2M) ? PMD_SIZE :
+			   (level == PG_LEVEL_1G) ? PUD_SIZE :
+			   (level == PG_LEVEL_512G) ? P4D_SIZE : 0;
+		
+		base += incr;
+	}
+
+	return enc;
+}
+EXPORT_SYMBOL_GPL(is_vm_encrypted);
+
+int set_vm_encrypted(struct mm_struct *mm, unsigned long start, unsigned long end)
+{
+	unsigned long base = start, incr;
+	unsigned int level;
+	pte_t *pte ,new_pte;
+	unsigned long pfn;
+	pgprot_t new_pgprot;
+	void *va;
+
+	if (end <= start) return -1;
+
+	while (base < end) {
+		pte = lookup_address_in_pgd(pgd_offset(mm, base), base, &level);
+		if (pte == NULL || level == PG_LEVEL_NONE) return -1;
+
+		// do not reencrypt already encrypted vm as it causes pvalidate fault
+		if (!cc_isenc(pte_val(*pte))) {
+			pfn = pte_pfn(*pte);
+			new_pgprot = pgprot_encrypted(pte_pgprot(*pte));
+			new_pte = pfn_pte(pfn, new_pgprot);
+
+			set_pte_atomic(pte, new_pte);
+
+			va = __va(__pfn_to_phys(pfn));
+			x86_platform.guest.enc_status_change_prepare((unsigned long) va, 1, 1);
+			x86_platform.guest.enc_status_change_finish((unsigned long) va, 1, 1);
+		}
+
+		incr = (level == PG_LEVEL_4K) ? PAGE_SIZE :
+               (level == PG_LEVEL_2M) ? PMD_SIZE :
+               (level == PG_LEVEL_1G) ? PUD_SIZE :
+               (level == PG_LEVEL_512G) ? P4D_SIZE : 0;
+
+		base += incr;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(set_vm_encrypted);
+
+int set_vm_decrypted(struct mm_struct *mm, unsigned long start, unsigned long end)
+{
+	unsigned long base = start, incr;
+	unsigned int level;
+	pte_t *pte ,new_pte;
+	unsigned long pfn;
+	pgprot_t new_pgprot;
+	void *va;
+
+	if (end <= start) return -1;
+
+	while (base < end) {
+		pte = lookup_address_in_pgd(pgd_offset(mm, base), base, &level);
+		if (pte == NULL || level == PG_LEVEL_NONE) return -1;
+
+		// do not redecrypt already encrypted vm as it causes pvalidate fault
+		if (cc_isenc(pte_val(*pte))) {
+			pfn = pte_pfn(*pte);
+			new_pgprot = pgprot_decrypted(pte_pgprot(*pte));
+			new_pte = pfn_pte(pfn, new_pgprot);
+
+			set_pte_atomic(pte, new_pte);
+
+			va = __va(__pfn_to_phys(pfn));
+			x86_platform.guest.enc_status_change_prepare((unsigned long) va, 1, 0);
+			x86_platform.guest.enc_status_change_finish((unsigned long) va, 1, 0);
+		}
+
+		incr = (level == PG_LEVEL_4K) ? PAGE_SIZE :
+               (level == PG_LEVEL_2M) ? PMD_SIZE :
+               (level == PG_LEVEL_1G) ? PUD_SIZE :
+               (level == PG_LEVEL_512G) ? P4D_SIZE : 0;
+
+		base += incr;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(set_vm_decrypted);
+
 int set_pages_uc(struct page *page, int numpages)
 {
 	unsigned long addr = (unsigned long)page_address(page);
