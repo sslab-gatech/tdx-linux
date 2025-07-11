@@ -365,7 +365,7 @@ struct kvm_vmx {
 
 	/* OpenTDX */
 	struct list_head pci_regions;
-	DECLARE_HASHTABLE(pci_bars, 4);
+	struct list_head pci_bars;
 };
 
 void vmx_vcpu_load_vmcs(struct kvm_vcpu *vcpu, int cpu,

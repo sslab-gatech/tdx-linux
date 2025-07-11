@@ -44,9 +44,10 @@ typedef struct {
     u64 base;
     u64 length;
 
-    struct hlist_node node;
+    struct list_head node;
 } pci_bar_t;
 
 int handle_tdcall(struct kvm_vcpu *vcpu);
+void hook_mmio(struct kvm_vcpu *vcpu, gpa_t gpa);
 
 #endif

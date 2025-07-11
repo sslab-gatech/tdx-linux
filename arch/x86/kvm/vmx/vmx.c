@@ -7550,7 +7550,7 @@ int vmx_vm_init(struct kvm *kvm)
 	}
 
 	INIT_LIST_HEAD(&kvm_vmx->pci_regions);
-	hash_init(kvm_vmx->pci_bars);
+	INIT_LIST_HEAD(&kvm_vmx->pci_bars);
 
 	return 0;
 }
@@ -8170,20 +8170,18 @@ void vmx_hardware_unsetup(void)
 void vmx_vm_destroy(struct kvm *kvm)
 {
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
-	struct hlist_node *bar_node;
-	pci_region_t *region, *tmp;
-	pci_bar_t *bar;
-	int bkt;
+	pci_region_t *region, *tmp_region;
+	pci_bar_t *bar, *tmp_bar;
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
 
-	list_for_each_entry_safe(region, tmp, &kvm_vmx->pci_regions, node) {
+	list_for_each_entry_safe(region, tmp_region, &kvm_vmx->pci_regions, node) {
 		list_del(&region->node);
 		kfree(region);
 	}
 
-	hash_for_each_safe(kvm_vmx->pci_bars, bkt, bar_node, bar, node) {
-		hash_del(&bar->node);
+	list_for_each_entry_safe(bar, tmp_bar, &kvm_vmx->pci_bars, node) {
+		list_del(&bar->node);
 		kfree(bar);
 	}
 }

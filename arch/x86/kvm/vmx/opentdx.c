@@ -54,15 +54,16 @@ static int register_pci_bar(struct kvm_vcpu *vcpu)
     u64 type_owner = kvm_rcx_read(vcpu);
     u64 base = kvm_rdx_read(vcpu);
     u64 length = kvm_r8_read(vcpu);
+    u64 end = base + length - 1, tmp_end;
 
     pci_resource_type_t type = (pci_resource_type_t) (type_owner >> 32);
     u8 bus = (type_owner >> 8) & 0xFF;
     u8 device = (type_owner >> 3) & 0x1F;
     u8 function = (type_owner) & 0x7;
 
-    int bkt;
-
     if (type >= MaxType)
+        return 1;
+    if (end <= base)
         return 1;
 
     bar = kzalloc(sizeof(*bar), GFP_KERNEL);
@@ -77,15 +78,17 @@ static int register_pci_bar(struct kvm_vcpu *vcpu)
     bar->base = base;
     bar->length = length;
 
-    hash_for_each(kvm_vmx->pci_bars, bkt, tmp, node) {
-        if (bar->base == tmp->base) {
-            printk(KERN_WARNING "opentdx: duplicate PCI bar\n");
+    list_for_each_entry(tmp, &kvm_vmx->pci_bars, node) {
+        tmp_end = tmp->base + tmp->length - 1;
+
+        if (!(end < tmp->base || base > tmp_end)) {
+            printk(KERN_WARNING "opentdx: PCI bars overlap\n");
             kfree(bar);
             return 1;
         }
     }
 
-    hash_add(kvm_vmx->pci_bars, &bar->node, bar->base);
+    list_add(&bar->node, &kvm_vmx->pci_bars);
 
     return 0;
 }
@@ -117,3 +120,11 @@ int handle_tdcall(struct kvm_vcpu *vcpu)
     return kvm_complete_insn_gp(vcpu, err);
 }
 
+void hook_mmio(struct kvm_vcpu *vcpu, gpa_t gpa)
+{
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);
+    pci_region_t *region;
+
+    list_for_each_entry(region, &kvm_vmx->pci_regions, node) {
+    }
+}
