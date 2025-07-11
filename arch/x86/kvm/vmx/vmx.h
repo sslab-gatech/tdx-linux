@@ -8,6 +8,7 @@
 #include <asm/intel_pt.h>
 #include <asm/perf_event.h>
 #include <asm/posted_intr.h>
+#include <linux/hashtable.h>
 
 #include "capabilities.h"
 #include "../kvm_cache_regs.h"
@@ -361,6 +362,10 @@ struct kvm_vmx {
 	gpa_t ept_identity_map_addr;
 	/* Posted Interrupt Descriptor (PID) table for IPI virtualization */
 	u64 *pid_table;
+
+	/* OpenTDX */
+	struct list_head pci_regions;
+	DECLARE_HASHTABLE(pci_bars, 4);
 };
 
 void vmx_vcpu_load_vmcs(struct kvm_vcpu *vcpu, int cpu,

@@ -77,6 +77,8 @@
 #include "vmx_onhyperv.h"
 #include "posted_intr.h"
 
+#include "opentdx.h"
+
 MODULE_AUTHOR("Qumranet");
 MODULE_DESCRIPTION("KVM support for VMX (Intel VT-x) extensions");
 MODULE_LICENSE("GPL");
@@ -5164,11 +5166,15 @@ bool vmx_guest_inject_ac(struct kvm_vcpu *vcpu)
 
 static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 {
+	static const char tdcall_bytecode[] = { __TDCALL_BYTECODE };
+
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct kvm_run *kvm_run = vcpu->run;
 	u32 intr_info, ex_no, error_code;
 	unsigned long cr2, dr6;
 	u32 vect_info;
+	char inst[4];
+	struct x86_exception e;
 
 	vect_info = vmx->idt_vectoring_info;
 	intr_info = vmx_get_intr_info(vcpu);
@@ -5192,8 +5198,16 @@ static int handle_exception_nmi(struct kvm_vcpu *vcpu)
 		return 1;
 	}
 
-	if (is_invalid_opcode(intr_info))
-		return handle_ud(vcpu);
+	if (is_invalid_opcode(intr_info)) {
+		if (kvm_read_guest_virt(vcpu, kvm_rip_read(vcpu),
+			inst, sizeof(inst), &e) == 0) {
+			if (memcmp(inst, tdcall_bytecode, sizeof(tdcall_bytecode)) == 0) {
+				return handle_tdcall(vcpu);
+			} else
+				return handle_ud(vcpu);
+		} else
+			return handle_ud(vcpu);
+	}
 
 	if (WARN_ON_ONCE(is_ve_fault(intr_info))) {
 		struct vmx_ve_information *ve_info = vmx->ve_info;
@@ -7506,6 +7520,8 @@ free_vpid:
 
 int vmx_vm_init(struct kvm *kvm)
 {
+	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
+
 	if (!ple_gap)
 		kvm->arch.pause_in_guest = true;
 
@@ -7532,6 +7548,10 @@ int vmx_vm_init(struct kvm *kvm)
 			break;
 		}
 	}
+
+	INIT_LIST_HEAD(&kvm_vmx->pci_regions);
+	hash_init(kvm_vmx->pci_bars);
+
 	return 0;
 }
 
@@ -8150,8 +8170,22 @@ void vmx_hardware_unsetup(void)
 void vmx_vm_destroy(struct kvm *kvm)
 {
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
+	struct hlist_node *bar_node;
+	pci_region_t *region, *tmp;
+	pci_bar_t *bar;
+	int bkt;
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
+
+	list_for_each_entry_safe(region, tmp, &kvm_vmx->pci_regions, node) {
+		list_del(&region->node);
+		kfree(region);
+	}
+
+	hash_for_each_safe(kvm_vmx->pci_bars, bkt, bar_node, bar, node) {
+		hash_del(&bar->node);
+		kfree(bar);
+	}
 }
 
 /*
