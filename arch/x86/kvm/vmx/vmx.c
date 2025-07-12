@@ -5795,6 +5795,8 @@ static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 		return kvm_skip_emulated_instruction(vcpu);
 	}
 
+	hook_mmio(vcpu, gpa);
+
 	return kvm_mmu_page_fault(vcpu, gpa, PFERR_RSVD_MASK, NULL, 0);
 }
 
@@ -7550,7 +7552,7 @@ int vmx_vm_init(struct kvm *kvm)
 	}
 
 	INIT_LIST_HEAD(&kvm_vmx->pci_regions);
-	INIT_LIST_HEAD(&kvm_vmx->pci_bars);
+	kvm_vmx->pci_bars = RB_ROOT_CACHED;
 
 	return 0;
 }
@@ -8171,7 +8173,8 @@ void vmx_vm_destroy(struct kvm *kvm)
 {
 	struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
 	pci_region_t *region, *tmp_region;
-	pci_bar_t *bar, *tmp_bar;
+
+	struct interval_tree_node *iter;
 
 	free_pages((unsigned long)kvm_vmx->pid_table, vmx_get_pid_table_order(kvm));
 
@@ -8180,9 +8183,9 @@ void vmx_vm_destroy(struct kvm *kvm)
 		kfree(region);
 	}
 
-	list_for_each_entry_safe(bar, tmp_bar, &kvm_vmx->pci_bars, node) {
-		list_del(&bar->node);
-		kfree(bar);
+	while ((iter = interval_tree_iter_first(&kvm_vmx->pci_bars, 0, ULONG_MAX))) {
+		interval_tree_remove(iter, &kvm_vmx->pci_bars);
+		kfree(container_of(iter, pci_bar_t, node));
 	}
 }
 

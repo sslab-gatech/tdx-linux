@@ -26,8 +26,8 @@ typedef enum {
 
 typedef struct {
     pci_resource_type_t type;
-    u64 base;     /* Base address of the region */
-    u64 length;   /* Size of the region */
+    u64 start;
+    u64 end;
     struct list_head node;
 } pci_region_t;
 
@@ -41,10 +41,10 @@ typedef struct {
     pci_resource_type_t type;
     pci_owner_t owner;
 
-    u64 base;
-    u64 length;
+    u64 start;
+    u64 end;
 
-    struct list_head node;
+    struct interval_tree_node node;
 } pci_bar_t;
 
 int handle_tdcall(struct kvm_vcpu *vcpu);
