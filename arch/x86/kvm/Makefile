@@ -3,6 +3,16 @@
 ccflags-y += -I $(srctree)/arch/x86/kvm
 ccflags-$(CONFIG_KVM_WERROR) += -Werror
 
+ifdef MAXGPA
+        ccflags-y += -DMAXGPA=${MAXGPA}
+endif
+ifdef SHAREDGPA
+        ccflags-y += -DSHAREDGPA=${SHAREDGPA}
+endif
+ifdef MKTMEBITS
+        ccflags-y += -DMKTMEBITS=${MKTMEBITS}
+endif
+
 ifeq ($(CONFIG_FRAME_POINTER),y)
 OBJECT_FILES_NON_STANDARD_vmenter.o := y
 endif
