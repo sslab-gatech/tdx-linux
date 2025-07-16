@@ -39,8 +39,11 @@ bool enable_tdx __ro_after_init;
 module_param_named(tdx, enable_tdx, bool, 0444);
 
 #define TDX_SHARED_BIT_PWL_5 gpa_to_gfn(BIT_ULL(51))
-// #define TDX_SHARED_BIT_PWL_4 gpa_to_gfn(BIT_ULL(47))
-#define TDX_SHARED_BIT_PWL_4 gpa_to_gfn(BIT_ULL(45))
+#ifdef SHAREDGPA
+#define TDX_SHARED_BIT_PWL_4 gpa_to_gfn(BIT_ULL(SHAREDGPA))
+#else
+#define TDX_SHARED_BIT_PWL_4 gpa_to_gfn(BIT_ULL(47))
+#endif
 
 static enum cpuhp_state tdx_cpuhp_state;
 

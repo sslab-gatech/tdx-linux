@@ -3,6 +3,16 @@
 ccflags-y += -I $(srctree)/arch/x86/kvm
 ccflags-$(CONFIG_KVM_WERROR) += -Werror
 
+ifdef MAXGPA
+	ccflags-y += -DMAXGPA=${MAXGPA}
+endif
+ifdef SHAREDGPA
+	ccflags-y += -DSHAREDGPA=${SHAREDGPA}
+endif
+ifdef MKTMEBITS
+	ccflags-y += -DMKTMEBITS=${MKTMEBITS}
+endif
+
 include $(srctree)/virt/kvm/Makefile.kvm
 
 kvm-y			+= x86.o emulate.o i8259.o irq.o lapic.o \
