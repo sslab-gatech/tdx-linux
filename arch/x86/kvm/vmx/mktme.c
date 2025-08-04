@@ -85,6 +85,15 @@ gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm *kvm)
     return gpa | mask;
 }
 
+u16 keyid_of_page(gpa_t gpa, struct kvm *kvm)
+{
+    struct kvm_vmx *kvm_vmx = to_kvm_vmx(kvm);
+    gfn_t real_gfn = gpa_without_keyid(gpa, kvm) >> PAGE_SHIFT;
+    keyid_of_page_t *keyid_of_page = xa_load(&kvm_vmx->keyid_of_pages, real_gfn);
+
+    return keyid_of_page == NULL ? 0 : keyid_of_page->keyid;
+}
+
 static int handle_pconfig_mktme_key_program(struct kvm_vcpu *vcpu, gva_t rbx)
 {
     struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);

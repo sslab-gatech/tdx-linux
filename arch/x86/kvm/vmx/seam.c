@@ -23,6 +23,11 @@ enum seamops_function {
     SEAMDB_REPORT   = 0x5,
 };
 
+inline bool is_seam_mode(struct kvm_vcpu *vcpu)
+{
+    return !!to_vmx(vcpu)->seam_mode;
+}
+
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa)
 {
     struct kvm_vmx *kvm_vmx = to_kvm_vmx(vcpu->kvm);

@@ -9364,6 +9364,8 @@ static __init int hardware_setup(void)
 		vmx_x86_ops.get_gpa_with_keyid = gpa_with_keyid;
 		vmx_x86_ops.update_keyid_of_pages = vmx_update_keyid_of_pages;
 		vmx_x86_ops.clear_keyid_of_pages = vmx_clear_keyid_of_pages;
+		vmx_x86_ops.is_cc_vcpu = is_seam_mode;
+		vmx_x86_ops.get_keyid_of_page = keyid_of_page;
 
 		vmx_x86_ops.get_seam_state = get_seam_state;
 		vmx_x86_ops.get_mktme_state = get_mktme_state;

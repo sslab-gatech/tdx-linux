@@ -481,6 +481,7 @@ static void nested_ept_init_mmu_context(struct kvm_vcpu *vcpu)
 	nested_ept_new_eptp(vcpu);
 	vcpu->arch.mmu->get_guest_pgd     = nested_ept_get_eptp;
 	vcpu->arch.mmu->get_guest_pgd_shared = nested_ept_get_shared_eptp;
+	vcpu->arch.mmu->get_hkid = nested_ept_get_hkid;
 	vcpu->arch.mmu->inject_page_fault = nested_ept_inject_page_fault;
 	vcpu->arch.mmu->get_pdptr         = kvm_pdptr_read;
 

@@ -446,6 +446,7 @@ struct kvm_page_fault;
 struct kvm_mmu {
 	unsigned long (*get_guest_pgd)(struct kvm_vcpu *vcpu);
 	unsigned long (*get_guest_pgd_shared)(struct kvm_vcpu *vcpu);
+	u16 (*get_hkid)(struct kvm_vcpu *vcpu);
 	u64 (*get_pdptr)(struct kvm_vcpu *vcpu, int index);
 	int (*page_fault)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault);
 	void (*inject_page_fault)(struct kvm_vcpu *vcpu,
@@ -1809,6 +1810,8 @@ struct kvm_x86_ops {
 	gpa_t (*get_gpa_with_keyid)(gpa_t gpa, u16 keyid, struct kvm *kvm);
 	void (*update_keyid_of_pages)(struct kvm_vcpu *vcpu, gpa_t gpa, u16 keyid, u64 *sptep);
 	void (*clear_keyid_of_pages)(struct kvm *kvm);
+	u16 (*get_keyid_of_page)(gpa_t gpa, struct kvm *kvm);
+	bool (*is_cc_vcpu)(struct kvm_vcpu *vcpu);
 
 	int (*get_seam_state)(struct kvm_vcpu *vcpu, struct kvm_seam_state __user *user_kvm_seam_state);
 	int (*get_mktme_state)(struct kvm_vcpu *vcpu, struct kvm_mktme_state __user *user_kvm_mktme_state);

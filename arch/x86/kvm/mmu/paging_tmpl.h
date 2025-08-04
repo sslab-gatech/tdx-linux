@@ -90,6 +90,9 @@ struct guest_walker {
 	unsigned int pte_access;
 	gfn_t gfn;
 	struct x86_exception fault;
+
+	/* MKTME keyid if set in gpa */
+	u16 keyid;
 };
 
 #if PTTYPE == 32
@@ -330,14 +333,20 @@ static int FNAME(walk_addr_generic)(struct guest_walker *walker,
 	gpa_t real_gpa;
 	gfn_t gfn;
 	bool non_present_gpte = false;
+	u16 gpa_keyid, page_keyid;
+	bool is_cc = open_tdx ? kvm_x86_ops.is_cc_vcpu(vcpu) : false;
+	bool is_shared_gpa = is_cc && !!(addr & (1ULL << (vcpu->arch.maxphyaddr - 1)));
+	u16 td_keyid;
 
+	walker->keyid = 0;
 	trace_kvm_mmu_pagetable_walk(addr, access);
 retry_walk:
 	walker->level = mmu->cpu_role.base.level;
 #if PTTYPE == PTTYPE_EPT
 	// Need to also check if L2 VM is in seam mode or not
-	pte			  = (open_tdx && !!(addr & (1ULL << (vcpu->arch.maxphyaddr - 1)))) ?
+	pte			  = is_shared_gpa?
 					  mmu->get_guest_pgd_shared(vcpu) : mmu->get_guest_pgd(vcpu);
+	td_keyid = is_cc ? mmu->get_hkid(vcpu) : 0;
 #else
 	pte 		  = kvm_mmu_get_guest_pgd(vcpu, mmu);
 #endif
@@ -394,8 +403,32 @@ retry_walk:
 
 		real_gpa = kvm_translate_gpa(vcpu, mmu, gfn_to_gpa(table_gfn),
 					     nested_access, &walker->fault);
-		if (kvm_x86_ops.get_keyid_of && kvm_x86_ops.get_keyid_of(real_gpa, vcpu->kvm))
-			BUG();
+#if PTTYPE == PTTYPE_EPT
+		if (open_tdx) {
+			gpa_keyid = kvm_x86_ops.get_keyid_of(real_gpa, vcpu->kvm);
+			page_keyid = kvm_x86_ops.get_keyid_of_page(real_gpa, vcpu->kvm);
+
+			/* MKTME check rule for non-leaf EPT entries
+			 *   1. TD
+			 *      a. if shared GPA, hkid in entry must be the same as the keyid of EPT page
+			 *		b. if private GPA, hkid in entry must be 0, vmcs->td_hkid must be same.
+			 *	 2. Non-TD
+			 *		a. raise fault if either accessing with hkid set in EPT entry,
+			 *		   or access to encryped page
+			*/
+			if (is_cc) {
+				if ((is_shared_gpa && (gpa_keyid != page_keyid)) ||
+					(!is_shared_gpa && ((td_keyid != page_keyid) || gpa_keyid > 0)))
+					goto error;
+			} else if (gpa_keyid > 0 || page_keyid > 0)
+				goto error;
+
+			real_gpa = kvm_x86_ops.get_gpa_without_keyid(real_gpa, vcpu->kvm);
+
+			walker->table_gfn[walker->level - 1] = gpa_to_gfn(real_gpa);
+			walker->pte_gpa[walker->level - 1] = real_gpa + offset;
+		}
+#endif
 
 		/*
 		 * FIXME: This can happen if emulation (for of an INS/OUTS
@@ -468,6 +501,27 @@ retry_walk:
 	real_gpa = kvm_translate_gpa(vcpu, mmu, gfn_to_gpa(gfn), access, &walker->fault);
 	if (real_gpa == INVALID_GPA)
 		return 0;
+#if PTTYPE == PTTYPE_EPT
+	/* Same as MKTME rule for non-leaf entry, except accessing encrypted page 
+	 * (TODO) zero page should be returned when accessing encrypted page
+	 */
+	if (open_tdx) {
+		gpa_keyid = kvm_x86_ops.get_keyid_of(real_gpa, vcpu->kvm);
+		page_keyid = kvm_x86_ops.get_keyid_of_page(real_gpa, vcpu->kvm);
+
+		if (is_cc) {
+			if ((is_shared_gpa && (gpa_keyid != page_keyid)) ||
+				(!is_shared_gpa && !write_fault && ((td_keyid != page_keyid) || gpa_keyid > 0)))
+				return 0;
+		} else if (gpa_keyid > 0)
+			return 0;
+		// if !is_cc & gpa_keyid == 0 && page_keyid > 0
+		//   TODO: we should return zeroed page
+
+		walker->keyid = gpa_keyid;
+		real_gpa = kvm_x86_ops.get_gpa_without_keyid(real_gpa, vcpu->kvm);
+	}
+#endif
 
 	walker->gfn = real_gpa >> PAGE_SHIFT;
 
@@ -788,6 +842,22 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 	if (ret == RET_PF_SPURIOUS)
 		return ret;
 
+#if PTTYPE == PTTYPE_EPT
+	/* There are two ways of TD accessing encrypted memory 
+	 *   1. Accessing privage GPA
+	 *      hkid is retrieved from vmcs->td_hkid field, and EPT entry does not set the MKTME bits.
+	 *		fault->keyid is 0, not updating keyid of page.
+	 *		(keyid of page was already updated when TDX module accepting the memory)
+	 *
+	 *	 2. Accessing shared GPA with MKTME bits set
+	 *		EPT entry has the MKTME bits set in the physical address field.
+	 *		fault->keyid is set, updating keyid of the page.
+	 */
+	if (open_tdx && fault->keyid > 0)
+		kvm_x86_ops.update_keyid_of_pages(vcpu, fault->addr, fault->keyid,
+										  it.sptep);
+#endif
+
 	FNAME(pte_prefetch)(vcpu, gw, it.sptep);
 	return ret;
 
@@ -837,6 +907,7 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault
 	fault->gfn = walker.gfn;
 	fault->max_level = walker.level;
 	fault->slot = kvm_vcpu_gfn_to_memslot(vcpu, fault->gfn);
+	fault->keyid = walker.keyid;
 
 	if (page_fault_handle_page_track(vcpu, fault)) {
 		shadow_page_table_clear_flood(vcpu, fault->addr);

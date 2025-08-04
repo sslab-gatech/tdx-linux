@@ -145,6 +145,7 @@ bool has_keyid(gpa_t gpa, struct kvm *kvm);
 bool is_tdx_keyid(u16 keyid, struct kvm *kvm);
 gpa_t gpa_without_keyid(gpa_t gpa, struct kvm *kvm);
 gpa_t gpa_with_keyid(gpa_t gpa, u16 keyid, struct kvm *kvm);
+u16 keyid_of_page(gpa_t gpa, struct kvm *kvm);
 
 int handle_pconfig(struct kvm_vcpu *vcpu);
 

@@ -81,6 +81,11 @@ static inline unsigned long nested_ept_get_shared_eptp(struct kvm_vcpu *vcpu)
 	return get_vmcs12(vcpu)->shared_ept_pointer;
 }
 
+static inline u16 nested_ept_get_hkid(struct kvm_vcpu *vcpu)
+{
+	return get_vmcs12(vcpu)->td_hkid;
+}
+
 static inline bool nested_ept_ad_enabled(struct kvm_vcpu *vcpu)
 {
 	return nested_ept_get_eptp(vcpu) & VMX_EPTP_AD_ENABLE_BIT;

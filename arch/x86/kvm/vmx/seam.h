@@ -131,6 +131,7 @@ read_segment_helper(TR)
 #define CAPABILITIES_SEAMDB_GETREF  BIT(4)
 #define CAPABILITIES_SEAMDB_REPORT  BIT(5)
 
+bool is_seam_mode(struct kvm_vcpu *vcpu);
 void mcheck(struct kvm_vcpu *vcpu, gpa_t gpa);
 void handle_seamextend(struct kvm_vcpu *vcpu);
 
