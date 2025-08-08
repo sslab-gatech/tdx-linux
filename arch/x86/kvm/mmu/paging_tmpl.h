@@ -424,9 +424,6 @@ retry_walk:
 				goto error;
 
 			real_gpa = kvm_x86_ops.get_gpa_without_keyid(real_gpa, vcpu->kvm);
-
-			walker->table_gfn[walker->level - 1] = gpa_to_gfn(real_gpa);
-			walker->pte_gpa[walker->level - 1] = real_gpa + offset;
 		}
 #endif
 
@@ -522,7 +519,6 @@ retry_walk:
 		real_gpa = kvm_x86_ops.get_gpa_without_keyid(real_gpa, vcpu->kvm);
 	}
 #endif
-
 	walker->gfn = real_gpa >> PAGE_SHIFT;
 
 	if (!write_fault)

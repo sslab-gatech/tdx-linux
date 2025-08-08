@@ -79,6 +79,11 @@ struct kvm_mmu_page {
 	 */
 	union kvm_mmu_page_role role;
 	gfn_t gfn;
+	/*
+	 * To indicate which key id was used for the L1 VMM EPT page,
+	 * when this sp is used for shadow EPT page
+	 */
+	u16 keyid;
 
 	u64 *spt;
 

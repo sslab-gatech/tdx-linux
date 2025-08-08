@@ -829,9 +829,11 @@ static void account_shadowed(struct kvm *kvm, struct kvm_mmu_page *sp)
 	struct kvm_memslots *slots;
 	struct kvm_memory_slot *slot;
 	gfn_t gfn;
+	gpa_t gpa;
 
 	kvm->arch.indirect_shadow_pages++;
 	gfn = sp->gfn;
+	gpa = gfn << PAGE_SHIFT;
 	slots = kvm_memslots_for_spte_role(kvm, sp->role);
 	slot = __gfn_to_memslot(slots, gfn);
 
@@ -840,6 +842,9 @@ static void account_shadowed(struct kvm *kvm, struct kvm_mmu_page *sp)
 		return __kvm_write_track_add_gfn(kvm, slot, gfn);
 
 	kvm_mmu_gfn_disallow_lpage(slot, gfn);
+
+	if (kvm_x86_ops.get_gpa_with_keyid)
+		gfn = kvm_x86_ops.get_gpa_with_keyid(gpa, sp->keyid, kvm) >> PAGE_SHIFT;
 
 	if (kvm_mmu_slot_gfn_write_protect(kvm, slot, gfn, PG_LEVEL_4K))
 		kvm_flush_remote_tlbs_gfn(kvm, gfn, PG_LEVEL_4K);
@@ -1418,10 +1423,16 @@ bool kvm_mmu_slot_gfn_write_protect(struct kvm *kvm,
 	struct kvm_rmap_head *rmap_head;
 	int i;
 	bool write_protected = false;
+	gpa_t gpa = gfn << PAGE_SHIFT;
+	gfn_t real_gfn = gfn;
+
+	if (kvm_x86_ops.get_gpa_without_keyid) {
+		real_gfn = kvm_x86_ops.get_gpa_without_keyid(gpa, kvm) >> PAGE_SHIFT;
+	}
 
 	if (kvm_memslots_have_rmaps(kvm)) {
 		for (i = min_level; i <= KVM_MAX_HUGEPAGE_LEVEL; ++i) {
-			rmap_head = gfn_to_rmap(gfn, i, slot);
+			rmap_head = gfn_to_rmap(real_gfn, i, slot);
 			write_protected |= rmap_write_protect(rmap_head, true);
 		}
 	}
@@ -1433,11 +1444,18 @@ bool kvm_mmu_slot_gfn_write_protect(struct kvm *kvm,
 	return write_protected;
 }
 
-static bool kvm_vcpu_write_protect_gfn(struct kvm_vcpu *vcpu, u64 gfn)
+static bool kvm_vcpu_write_protect_gfn(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp)
 {
 	struct kvm_memory_slot *slot;
+	gpa_t gpa = sp->gfn << PAGE_SHIFT;
+	gfn_t gfn = sp->gfn;
 
 	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
+
+	if (kvm_x86_ops.get_gpa_with_keyid) {
+		gfn = kvm_x86_ops.get_gpa_with_keyid(gpa, sp->keyid, vcpu->kvm) >> PAGE_SHIFT;
+	}
+
 	return kvm_mmu_slot_gfn_write_protect(vcpu->kvm, slot, gfn, PG_LEVEL_4K);
 }
 
@@ -2104,7 +2122,7 @@ static int mmu_sync_children(struct kvm_vcpu *vcpu,
 		bool protected = false;
 
 		for_each_sp(pages, sp, parents, i)
-			protected |= kvm_vcpu_write_protect_gfn(vcpu, sp->gfn);
+			protected |= kvm_vcpu_write_protect_gfn(vcpu, sp);
 
 		if (protected) {
 			kvm_mmu_remote_flush_or_zap(vcpu->kvm, &invalid_list, true);
@@ -2240,6 +2258,13 @@ static struct kvm_mmu_page *kvm_mmu_alloc_shadow_page(struct kvm *kvm,
 						      union kvm_mmu_page_role role)
 {
 	struct kvm_mmu_page *sp;
+	gpa_t gpa = gfn << PAGE_SHIFT;
+	u16 keyid = 0;
+
+	if (kvm_x86_ops.get_keyid_of) {
+		keyid = kvm_x86_ops.get_keyid_of(gpa, kvm);
+		gfn = kvm_x86_ops.get_gpa_without_keyid(gpa, kvm) >> PAGE_SHIFT;
+	}
 
 	sp = kvm_mmu_memory_cache_alloc(caches->page_header_cache);
 	sp->spt = kvm_mmu_memory_cache_alloc(caches->shadow_page_cache);
@@ -2261,6 +2286,7 @@ static struct kvm_mmu_page *kvm_mmu_alloc_shadow_page(struct kvm *kvm,
 
 	sp->gfn = gfn;
 	sp->role = role;
+	sp->keyid = keyid;
 	hlist_add_head(&sp->hash_link, sp_list);
 	if (sp_has_gptes(sp))
 		account_shadowed(kvm, sp);
@@ -2278,10 +2304,16 @@ static struct kvm_mmu_page *__kvm_mmu_get_shadow_page(struct kvm *kvm,
 	struct hlist_head *sp_list;
 	struct kvm_mmu_page *sp;
 	bool created = false;
+	gpa_t gpa = gfn << PAGE_SHIFT;
+	gfn_t real_gfn = gfn;
 
-	sp_list = &kvm->arch.mmu_page_hash[kvm_page_table_hashfn(gfn)];
+	if (kvm_x86_ops.get_keyid_of) {
+		real_gfn = kvm_x86_ops.get_gpa_without_keyid(gpa, kvm) >> PAGE_SHIFT;
+	}
 
-	sp = kvm_mmu_find_shadow_page(kvm, vcpu, gfn, sp_list, role);
+	sp_list = &kvm->arch.mmu_page_hash[kvm_page_table_hashfn(real_gfn)];
+
+	sp = kvm_mmu_find_shadow_page(kvm, vcpu, real_gfn, sp_list, role);
 	if (!sp) {
 		created = true;
 		sp = kvm_mmu_alloc_shadow_page(kvm, caches, gfn, sp_list, role);
