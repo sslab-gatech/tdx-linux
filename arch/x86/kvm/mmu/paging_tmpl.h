@@ -333,10 +333,12 @@ static int FNAME(walk_addr_generic)(struct guest_walker *walker,
 	gpa_t real_gpa;
 	gfn_t gfn;
 	bool non_present_gpte = false;
+#if PTTYPE == PTTYPE_EPT
 	u16 gpa_keyid, page_keyid;
 	bool is_cc = open_tdx ? kvm_x86_ops.is_cc_vcpu(vcpu) : false;
 	bool is_shared_gpa = is_cc && !!(addr & (1ULL << (vcpu->arch.maxphyaddr - 1)));
 	u16 td_keyid;
+#endif
 
 	walker->keyid = 0;
 	trace_kvm_mmu_pagetable_walk(addr, access);
@@ -417,11 +419,23 @@ retry_walk:
 			 *		   or access to encryped page
 			*/
 			if (is_cc) {
-				if ((is_shared_gpa && (gpa_keyid != page_keyid)) ||
-					(!is_shared_gpa && ((td_keyid != page_keyid) || gpa_keyid > 0)))
-					goto error;
-			} else if (gpa_keyid > 0 || page_keyid > 0)
-				goto error;
+				if (is_shared_gpa && (gpa_keyid != page_keyid)) {
+					printk(KERN_WARNING "[opentdx] mktme violation: shared ept error for 0x%llx (gpa_keyid: %d, page_keyid: %d)\n",
+							table_gfn << PAGE_SHIFT, gpa_keyid, page_keyid);
+
+					BUG();
+				} else if (!is_shared_gpa && ((td_keyid != page_keyid) || gpa_keyid > 0)) {
+					printk(KERN_WARNING "[opentdx] mktme violation: ept error for 0x%llx (td_keyid: %d, gpa_keyid: %d, page_keyid: %d)\n",
+							table_gfn << PAGE_SHIFT, td_keyid, gpa_keyid, page_keyid);
+
+					BUG();
+				}
+			} else if (gpa_keyid > 0 || page_keyid > 0) {
+				printk(KERN_WARNING "[opentdx] mktme violation: ept walking of 0x%llx (gpa_keyid: %d, page_keyid: %d) from Non-SEAM\n",
+						table_gfn << PAGE_SHIFT, gpa_keyid, page_keyid);
+
+				BUG();
+			}
 
 			real_gpa = kvm_x86_ops.get_gpa_without_keyid(real_gpa, vcpu->kvm);
 		}
@@ -508,10 +522,18 @@ retry_walk:
 
 		if (is_cc) {
 			if ((is_shared_gpa && (gpa_keyid != page_keyid)) ||
-				(!is_shared_gpa && !write_fault && ((td_keyid != page_keyid) || gpa_keyid > 0)))
-				return 0;
-		} else if (gpa_keyid > 0)
-			return 0;
+				(!is_shared_gpa && !write_fault && ((td_keyid != page_keyid) || gpa_keyid > 0))) {
+				printk(KERN_WARNING "[opentdx] mktme violation: access to GPA 0x%llx (HPA: 0x%llx) whose real keyid is %d\n",
+						addr, real_gpa, page_keyid);
+
+				BUG();
+			}
+		} else if (gpa_keyid > 0) {
+			printk(KERN_WARNING "[opentdx] mktme violation: access to GPA 0x%llx (HPA: 0x%llx) from Non-SEAM\n",
+					addr, real_gpa);
+
+			BUG();
+		}
 		// if !is_cc & gpa_keyid == 0 && page_keyid > 0
 		//   TODO: we should return zeroed page
 
