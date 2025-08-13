@@ -7492,7 +7492,12 @@ static void __vmx_complete_interrupts(struct kvm_vcpu *vcpu,
 		printk(KERN_WARNING "[opentdx] vector %d injected while in seam mode at 0x%lx\n", 
 				vector, kvm_rip_read(vcpu));
 
-		BUG();
+		// Often hit when attaching debugger to TDX module, just resolve the interrupt
+        // (This may cause a IO hang)
+		kvm_apic_set_eoi(vcpu);
+		
+		return;
+		// BUG();
 	}
 
 	switch (type) {

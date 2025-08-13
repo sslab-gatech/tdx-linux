@@ -747,7 +747,11 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     svi = vmcs_read16(GUEST_INTR_STATUS) >> 8;
     if (svi) {
         printk(KERN_WARNING "[opentdx] intr not resolved before seamcall (SVI=%d)\n", svi);
-        BUG(); // TODO: don't know whether OpenTDX should handle it
+        // Often hit when attaching debugger to TDX module, just resolve the interrupt
+        // (This may cause a IO hang)
+        kvm_apic_set_eoi(vcpu);
+
+        // BUG(); // TODO: don't know whether OpenTDX should handle it
     }
 
     vcpu->arch.apic->apicv_active = false;
