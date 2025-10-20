@@ -288,6 +288,13 @@ static inline void tdx_disassociate_vp(struct kvm_vcpu *vcpu)
 
 static void tdx_clear_page(struct page *page, unsigned long size)
 {
+	static bool movdir_checked = false;
+	static bool movdir_supported;
+	if (!movdir_checked) {
+	 movdir_supported = boot_cpu_has(X86_FEATURE_MOVDIR64B);
+	 movdir_checked = true;
+	}
+
 	const void *zero_page = (const void *) page_to_virt(ZERO_PAGE(0));
 	void *dest = page_to_virt(page);
 	unsigned long i;
@@ -297,8 +304,14 @@ static void tdx_clear_page(struct page *page, unsigned long size)
 	 * The page could have been poisoned.  MOVDIR64B also clears
 	 * the poison bit so the kernel can safely use the page again.
 	 */
-	for (i = 0; i < size; i += 64)
-		movdir64b(dest + i, zero_page);
+	if (movdir_supported)
+		for (i = 0; i < size; i += 64) {
+		    movdir64b(dest + i, zero_page);
+ 	    }
+	else
+		for (i = 0; i < size; i += 64) {
+			memset(dest + i, 0, 8);
+		}
 	/*
 	 * MOVDIR64B store uses WC buffer.  Prevent following memory reads
 	 * from seeing potentially poisoned cache.
@@ -3548,10 +3561,10 @@ int __init tdx_bringup(void)
 		goto success_disable_tdx;
 	}
 
-	if (!cpu_feature_enabled(X86_FEATURE_MOVDIR64B)) {
-		pr_err("MOVDIR64B is reqiured for TDX\n");
-		goto success_disable_tdx;
-	}
+	// if (!cpu_feature_enabled(X86_FEATURE_MOVDIR64B)) {
+	// 	pr_err("MOVDIR64B is reqiured for TDX\n");
+	// 	goto success_disable_tdx;
+	// }
 
 	if (!kvm_can_support_tdx()) {
 		pr_err("tdx: no TDX private KeyIDs available\n");
