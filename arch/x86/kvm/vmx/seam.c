@@ -836,17 +836,7 @@ int handle_seamret(struct kvm_vcpu *vcpu)
         mutex_unlock(&kvm_vmx->p_seamldr_lock);
     }
 
-    down_read(&vcpu->kvm->arch.apicv_update_lock);
-    preempt_disable();
-
-    vcpu->arch.apic->apicv_active = true;
-    kvm_apic_update_apicv(vcpu);
-    vmx_hwapic_irr_update(vcpu, kvm_lapic_find_highest_irr(vcpu));
-    vmx_hwapic_isr_update(kvm_lapic_find_highest_isr(vcpu));
-    vmx_refresh_apicv_exec_ctrl(vcpu);
-
-    preempt_enable();
-    up_read(&vcpu->kvm->arch.apicv_update_lock);
+    /* Do not refresh APICv from SEAMRET; it rewrites the SEAM controls. */
 
 exit:
     free_page((unsigned long) vmcs);
