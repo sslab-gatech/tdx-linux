@@ -692,7 +692,8 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     kvm_cpuid(vcpu, &eax, &ebx, &ecx, &edx, false);
 
     
-    if (!vmx->nested.vmxon || vmx->seam_mode || (!(efer & EFER_LMA) || !cs.l)) {
+    /* SEAMCALLs do not require nested VMX operation. */
+    if (vmx->seam_mode || (!(efer & EFER_LMA) || !cs.l)) {
         kvm_queue_exception(vcpu, UD_VECTOR);
         return 1;
     } else if (is_guest_mode(vcpu)) {
