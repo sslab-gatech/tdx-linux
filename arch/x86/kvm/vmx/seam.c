@@ -657,6 +657,16 @@ static int vmx_fail_invalid(struct kvm_vcpu *vcpu)
 	return kvm_skip_emulated_instruction(vcpu);
 }
 
+static int vmx_fail_invalid_seamcall(struct kvm_vcpu *vcpu)
+{
+	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
+			& ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF |
+			    X86_EFLAGS_SF | X86_EFLAGS_OF))
+			| X86_EFLAGS_CF);
+	kvm_rip_write(vcpu, kvm_rip_read(vcpu) + 4);
+	return 1;
+}
+
 int handle_seamcall(struct kvm_vcpu *vcpu)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -716,7 +726,8 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     } else {
 // TODO: Check TDX Module is loaded
         if (!kvm_vmx->seam_extend.seam_ready) {
-            return vmx_fail_invalid(vcpu);
+            /* SEAMCALL is 4 bytes; do not trust the exception exit length. */
+            return vmx_fail_invalid_seamcall(vcpu);
         }
     }
 
