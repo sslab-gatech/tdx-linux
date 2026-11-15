@@ -1576,6 +1576,13 @@ bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 	entry = kvm_find_cpuid_entry_index(vcpu, function, index);
 	exact = !!entry;
 
+	/* Alias 0x1F to 0xB; both carry the same x2APIC ID. */
+	if (!entry && function == 0x1f) {
+		entry = kvm_find_cpuid_entry_index(vcpu, 0xb, index);
+		if (entry)
+			exact = true;
+	}
+
 	if (!entry && !exact_only) {
 		entry = get_out_of_range_cpuid_entry(vcpu, &function, index);
 		used_max_basic = !!entry;
