@@ -929,7 +929,7 @@ int handle_seamops(struct kvm_vcpu *vcpu)
         err = handle_seamops_seamdb_getref(vcpu);
         break;
     case SEAMDB_REPORT:
-        err = 1;
+        err = handle_seamops_seamreport(vcpu);
         break;
     default:
         err = 1;
