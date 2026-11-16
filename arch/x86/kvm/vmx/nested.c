@@ -3620,6 +3620,20 @@ enum nvmx_vmentry_status nested_vmx_enter_non_root_mode(struct kvm_vcpu *vcpu,
 		goto vmentry_fail_vmexit_guest_mode;
 	}
 
+	/* Enforce the sanitized timer and MOV-DR controls on vmcs02. */
+	if (vmx->seam_mode) {
+		u32 pin = vmcs_read32(PIN_BASED_VM_EXEC_CONTROL);
+		u32 proc = vmcs_read32(CPU_BASED_VM_EXEC_CONTROL);
+
+		if (pin & PIN_BASED_VMX_PREEMPTION_TIMER)
+			vmcs_write32(PIN_BASED_VM_EXEC_CONTROL,
+				     pin & ~PIN_BASED_VMX_PREEMPTION_TIMER);
+		vmcs_write32(VMX_PREEMPTION_TIMER_VALUE, 0xffffffffU);
+		if (proc & CPU_BASED_MOV_DR_EXITING)
+			vmcs_write32(CPU_BASED_VM_EXEC_CONTROL,
+				     proc & ~CPU_BASED_MOV_DR_EXITING);
+	}
+
 	if (from_vmentry) {
 		failed_index = nested_vmx_load_msr(vcpu,
 						   vmcs12->vm_entry_msr_load_addr,
@@ -3691,6 +3705,33 @@ vmentry_fail_vmexit:
 	return NVMX_VMENTRY_VMEXIT;
 }
 
+/* Clear TD-VMCS controls unsupported by the underlying CPU. */
+static void seam_sanitize_td_controls(struct vcpu_vmx *vmx, struct vmcs12 *v)
+{
+	struct nested_vmx_msrs *m = &vmx->nested.msrs;
+
+	v->pin_based_vm_exec_control =
+		(v->pin_based_vm_exec_control & m->pinbased_ctls_high) |
+		m->pinbased_ctls_low;
+	if (v->pin_based_vm_exec_control & PIN_BASED_VMX_PREEMPTION_TIMER)
+		v->pin_based_vm_exec_control &= ~PIN_BASED_VMX_PREEMPTION_TIMER;
+	v->vmx_preemption_timer_value = 0xffffffffU;
+	v->cpu_based_vm_exec_control =
+		(v->cpu_based_vm_exec_control & m->procbased_ctls_high) |
+		m->procbased_ctls_low;
+	if (v->cpu_based_vm_exec_control & CPU_BASED_MOV_DR_EXITING)
+		v->cpu_based_vm_exec_control &= ~CPU_BASED_MOV_DR_EXITING;
+	v->vm_exit_controls =
+		(v->vm_exit_controls & m->exit_ctls_high) | m->exit_ctls_low;
+	v->vm_entry_controls =
+		(v->vm_entry_controls & m->entry_ctls_high) | m->entry_ctls_low;
+
+	if (v->cpu_based_vm_exec_control & CPU_BASED_ACTIVATE_SECONDARY_CONTROLS)
+		v->secondary_vm_exec_control =
+			(v->secondary_vm_exec_control & m->secondary_ctls_high) |
+			m->secondary_ctls_low;
+}
+
 /*
  * nested_vmx_run() handles a nested entry, i.e., a VMLAUNCH or VMRESUME on L1
  * for running an L2 nested guest.
@@ -3741,6 +3782,10 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	} else if (enable_shadow_vmcs) {
 		copy_shadow_to_vmcs12(vmx);
 	}
+
+	/* Drop controls unsupported by the underlying CPU. */
+	if (vmx->seam_mode)
+		seam_sanitize_td_controls(vmx, vmcs12);
 
 	/*
 	 * The nested entry process starts with enforcing various prerequisites

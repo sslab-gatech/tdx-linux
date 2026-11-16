@@ -657,6 +657,16 @@ static int vmx_fail_invalid(struct kvm_vcpu *vcpu)
 	return kvm_skip_emulated_instruction(vcpu);
 }
 
+static int vmx_fail_invalid_seamcall(struct kvm_vcpu *vcpu)
+{
+	vmx_set_rflags(vcpu, (vmx_get_rflags(vcpu)
+			& ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF |
+			    X86_EFLAGS_SF | X86_EFLAGS_OF))
+			| X86_EFLAGS_CF);
+	kvm_rip_write(vcpu, kvm_rip_read(vcpu) + 4);
+	return 1;
+}
+
 int handle_seamcall(struct kvm_vcpu *vcpu)
 {
     struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -682,7 +692,8 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     kvm_cpuid(vcpu, &eax, &ebx, &ecx, &edx, false);
 
     
-    if (!vmx->nested.vmxon || vmx->seam_mode || (!(efer & EFER_LMA) || !cs.l)) {
+    /* SEAMCALLs do not require nested VMX operation. */
+    if (vmx->seam_mode || (!(efer & EFER_LMA) || !cs.l)) {
         kvm_queue_exception(vcpu, UD_VECTOR);
         return 1;
     } else if (is_guest_mode(vcpu)) {
@@ -716,7 +727,8 @@ int handle_seamcall(struct kvm_vcpu *vcpu)
     } else {
 // TODO: Check TDX Module is loaded
         if (!kvm_vmx->seam_extend.seam_ready) {
-            return vmx_fail_invalid(vcpu);
+            /* SEAMCALL is 4 bytes; do not trust the exception exit length. */
+            return vmx_fail_invalid_seamcall(vcpu);
         }
     }
 
@@ -825,17 +837,7 @@ int handle_seamret(struct kvm_vcpu *vcpu)
         mutex_unlock(&kvm_vmx->p_seamldr_lock);
     }
 
-    down_read(&vcpu->kvm->arch.apicv_update_lock);
-    preempt_disable();
-
-    vcpu->arch.apic->apicv_active = true;
-    kvm_apic_update_apicv(vcpu);
-    vmx_hwapic_irr_update(vcpu, kvm_lapic_find_highest_irr(vcpu));
-    vmx_hwapic_isr_update(kvm_lapic_find_highest_isr(vcpu));
-    vmx_refresh_apicv_exec_ctrl(vcpu);
-
-    preempt_enable();
-    up_read(&vcpu->kvm->arch.apicv_update_lock);
+    /* Do not refresh APICv from SEAMRET; it rewrites the SEAM controls. */
 
 exit:
     free_page((unsigned long) vmcs);
@@ -927,7 +929,7 @@ int handle_seamops(struct kvm_vcpu *vcpu)
         err = handle_seamops_seamdb_getref(vcpu);
         break;
     case SEAMDB_REPORT:
-        err = 1;
+        err = handle_seamops_seamreport(vcpu);
         break;
     default:
         err = 1;

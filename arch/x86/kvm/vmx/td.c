@@ -42,6 +42,8 @@ int handle_tdcall(struct kvm_vcpu *vcpu)
         return 1;
     }
 
+    /* TDCALL is 4 bytes; set the length before the exit copies vmcs12. */
+    get_vmcs12(vcpu)->vm_exit_instruction_len = 4;
     nested_vmx_vmexit(vcpu, EXIT_REASON_TDCALL, 0, 0);
     return 1;
 }
